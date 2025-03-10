@@ -1,7 +1,7 @@
 # main.py
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Dict, Any, Union
