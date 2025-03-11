@@ -39,6 +39,12 @@ import json
 import pytz
 from datetime import datetime, timezone
 
+import secrets
+import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 # Load environment variables
 load_dotenv()
 
@@ -95,7 +101,18 @@ async def create_indexes():
     await db.subjects.create_index([("user_id", ASCENDING)])
     await db.goals.create_index([("user_id", ASCENDING)])
     await db.notes.create_index([("user_id", ASCENDING)])
-
+    # New indexes for email verification and password reset
+    await db.email_verification.create_index([("token", ASCENDING)], unique=True)
+    await db.email_verification.create_index([("email", ASCENDING)])
+    await db.email_verification.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+    await db.password_reset.create_index([("token", ASCENDING)], unique=True)
+    await db.password_reset.create_index([("email", ASCENDING)])
+    await db.password_reset.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+    # Index for assignment sharing
+    await db.assignment_shares.create_index([("share_id", ASCENDING)], unique=True)
+    await db.assignment_shares.create_index([("user_id", ASCENDING)])
+    await db.assignment_shares.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+    
 # JWT Settings
 JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_key")
 JWT_ALGORITHM = "HS256"
@@ -215,6 +232,76 @@ class PyObjectId(str):
         except InvalidId:
             raise ValueError("Not a valid ObjectId")
 
+class EmailVerify(BaseModel):
+    email: EmailStr
+
+class VerifyToken(BaseModel):
+    token: str
+
+class PasswordReset(BaseModel):
+    email: EmailStr
+
+class ResetPassword(BaseModel):
+    token: str
+    new_password: str
+    
+    @validator('new_password')
+    def password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one number')
+        return v
+
+class AssignmentShareCreate(BaseModel):
+    user_id: str
+
+class AssignmentShareResponse(BaseModel):
+    share_link: str
+    expires_at: Optional[datetime] = None
+
+# Function to generate random tokens
+def generate_random_token(length=64):
+    return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
+
+# Function to generate short random links
+def generate_short_link(length=8):
+    return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
+
+# Email sending function
+async def send_email(to_email: str, subject: str, html_content: str):
+    # Replace with your email configuration
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME", "your-email@gmail.com")
+    smtp_password = os.getenv("SMTP_PASSWORD", "your-app-password")
+    
+    # Create message
+    msg = MIMEMultipart()
+    msg['From'] = smtp_username
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    
+    # Add HTML content
+    msg.attach(MIMEText(html_content, 'html'))
+    
+    try:
+        # Connect to server and send email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        logger.error(f"Error sending email: {str(e)}")
+        return False
+
+# Update UserCreate model to include email verification fields
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -239,12 +326,14 @@ class UserCreate(BaseModel):
             raise ValueError(f'Invalid timezone. Please use a valid timezone identifier.')
         return v
 
+# Update UserResponse to include verification status
 class UserResponse(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     email: EmailStr
     name: str
     timezone: str = DEFAULT_TIMEZONE
     created_at: datetime
+    is_verified: bool = False
 
     class Config:
         allow_population_by_field_name = True
@@ -617,6 +706,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     user = await db.users.find_one({"_id": ObjectId(token_data.user_id)})
     if user is None:
         raise credentials_exception
+    
+    # Check if user is verified
+    if not user.get("is_verified", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Please verify your email before accessing this resource."
+        )
+    
     return user
 
 # Authentication endpoints
@@ -647,6 +744,7 @@ async def register_user(request: Request, user: UserCreate):
         "password": hashed_password,
         "name": user.name,
         "timezone": user.timezone,
+        "is_verified": False,  # User starts as unverified
         "created_at": datetime.now(timezone.utc)
     }
     
@@ -662,10 +760,208 @@ async def register_user(request: Request, user: UserCreate):
     ]
     await db.subjects.insert_many(default_subjects)
     
+    # Generate verification token
+    verification_token = generate_random_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    
+    # Store verification token
+    await db.email_verification.insert_one({
+        "email": user.email,
+        "user_id": result.inserted_id,
+        "token": verification_token,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at
+    })
+    
+    # Send verification email
+    verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
+    email_content = f'''
+    <html>
+        <body>
+            <h2>Welcome to Student Dashboard!</h2>
+            <p>Hello {user.name},</p>
+            <p>Thank you for registering. Please click the link below to verify your email:</p>
+            <p><a href="{verification_url}">Verify Email Address</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p>If you did not create an account, please ignore this email.</p>
+        </body>
+    </html>
+    '''
+    
+    # Send email in background
+    asyncio.create_task(send_email(
+        to_email=user.email,
+        subject="Verify Your Email - Student Dashboard",
+        html_content=email_content
+    ))
+    
     # Return created user without password
     created_user = await db.users.find_one({"_id": result.inserted_id})
     created_user.pop("password")
     return created_user
+
+# Email verification endpoint
+@app.post("/verify-email", response_model=dict)
+@limiter.limit("20/minute")
+async def verify_email(request: Request, verification: VerifyToken):
+    # Find verification token
+    token_data = await db.email_verification.find_one({
+        "token": verification.token,
+        "expires_at": {"$gt": datetime.now(timezone.utc)}
+    })
+    
+    if not token_data:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+    
+    # Update user verification status
+    result = await db.users.update_one(
+        {"_id": ObjectId(token_data["user_id"])},
+        {"$set": {"is_verified": True}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Delete used token
+    await db.email_verification.delete_one({"token": verification.token})
+    
+    return {"message": "Email successfully verified. You can now log in."}
+
+# Resend verification email endpoint
+@app.post("/resend-verification", response_model=dict)
+@limiter.limit("5/minute")
+async def resend_verification(request: Request, email_data: EmailVerify):
+    # Find user
+    user = await db.users.find_one({"email": email_data.email})
+    
+    if not user:
+        # Don't reveal if email exists or not for security
+        return {"message": "If your email exists in our system, a verification link has been sent."}
+    
+    # Check if already verified
+    if user.get("is_verified", False):
+        return {"message": "Your email is already verified. You can log in."}
+    
+    # Delete any existing verification tokens
+    await db.email_verification.delete_many({"email": email_data.email})
+    
+    # Generate new verification token
+    verification_token = generate_random_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    
+    # Store verification token
+    await db.email_verification.insert_one({
+        "email": email_data.email,
+        "user_id": user["_id"],
+        "token": verification_token,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at
+    })
+    
+    # Send verification email
+    verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
+    email_content = f'''
+    <html>
+        <body>
+            <h2>Student Dashboard Email Verification</h2>
+            <p>Hello {user['name']},</p>
+            <p>Please click the link below to verify your email:</p>
+            <p><a href="{verification_url}">Verify Email Address</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p>If you did not create an account, please ignore this email.</p>
+        </body>
+    </html>
+    '''
+    
+    # Send email in background
+    asyncio.create_task(send_email(
+        to_email=email_data.email,
+        subject="Verify Your Email - Student Dashboard",
+        html_content=email_content
+    ))
+    
+    return {"message": "If your email exists in our system, a verification link has been sent."}
+
+# Forgot password endpoint
+@app.post("/forgot-password", response_model=dict)
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, password_data: PasswordReset):
+    # Find user
+    user = await db.users.find_one({"email": password_data.email})
+    
+    if not user:
+        # Don't reveal if email exists or not for security
+        return {"message": "If your email exists in our system, a password reset link has been sent."}
+    
+    # Delete any existing password reset tokens
+    await db.password_reset.delete_many({"email": password_data.email})
+    
+    # Generate password reset token
+    reset_token = generate_random_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    
+    # Store reset token
+    await db.password_reset.insert_one({
+        "email": password_data.email,
+        "user_id": user["_id"],
+        "token": reset_token,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at
+    })
+    
+    # Send password reset email
+    reset_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={reset_token}"
+    email_content = f'''
+    <html>
+        <body>
+            <h2>Password Reset Request</h2>
+            <p>Hello {user['name']},</p>
+            <p>We received a request to reset your password. Please click the link below to reset it:</p>
+            <p><a href="{reset_url}">Reset Your Password</a></p>
+            <p>This link will expire in 1 hour.</p>
+            <p>If you did not request a password reset, please ignore this email.</p>
+        </body>
+    </html>
+    '''
+    
+    # Send email in background
+    asyncio.create_task(send_email(
+        to_email=password_data.email,
+        subject="Password Reset - Student Dashboard",
+        html_content=email_content
+    ))
+    
+    return {"message": "If your email exists in our system, a password reset link has been sent."}
+
+# Reset password endpoint
+@app.post("/reset-password", response_model=dict)
+@limiter.limit("5/minute")
+async def reset_password(request: Request, reset_data: ResetPassword):
+    # Find reset token
+    token_data = await db.password_reset.find_one({
+        "token": reset_data.token,
+        "expires_at": {"$gt": datetime.now(timezone.utc)}
+    })
+    
+    if not token_data:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    
+    # Hash new password
+    hashed_password = hash_password(reset_data.new_password)
+    
+    # Update user's password
+    result = await db.users.update_one(
+        {"_id": ObjectId(token_data["user_id"])},
+        {"$set": {"password": hashed_password}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Delete used token
+    await db.password_reset.delete_one({"token": reset_data.token})
+    
+    return {"message": "Password successfully reset. You can now log in with your new password."}
 
 @app.post("/token", response_model=Token)
 @limiter.limit("10/minute")
@@ -680,6 +976,13 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Check if email is verified
+    if not user.get("is_verified", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Please check your email for the verification link."
+        )
+    
     # Create access token
     access_token_expires = timedelta(minutes=JWT_EXPIRATION_MINUTES)
     access_token = create_access_token(
@@ -688,6 +991,94 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+# Create shareable assignments link
+@app.post("/assignments/share", response_model=AssignmentShareResponse)
+@limiter.limit("20/minute")
+async def create_assignment_share(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    user_id = current_user["_id"]
+    
+    # Generate a unique share ID (between 5-10 chars)
+    share_id = generate_short_link(random.randint(5, 10))
+    
+    # Set expiration (default to 7 days)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    # Store share info
+    share_data = {
+        "share_id": share_id,
+        "user_id": ObjectId(user_id),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at
+    }
+    
+    await db.assignment_shares.insert_one(share_data)
+    
+    # Generate shareable link
+    share_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/shared-assignments/{share_id}"
+    
+    return {
+        "share_link": share_link,
+        "expires_at": expires_at
+    }
+
+# Get shared assignments
+@app.get("/shared-assignments/{share_id}")
+@limiter.limit("30/minute")
+async def get_shared_assignments(request: Request, share_id: str):
+    # Find share data
+    share_data = await db.assignment_shares.find_one({
+        "share_id": share_id,
+        "expires_at": {"$gt": datetime.now(timezone.utc)}
+    })
+    
+    if not share_data:
+        raise HTTPException(status_code=404, detail="Shared link not found or expired")
+    
+    # Get user to retrieve timezone
+    user = await db.users.find_one({"_id": share_data["user_id"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
+    
+    # Get pending assignments for the user
+    assignments = await db.assignments.find({
+        "user_id": share_data["user_id"],
+        "status": {"$ne": "completed"},
+        "due_date": {"$gt": datetime.now(timezone.utc)}
+    }).sort("due_date", 1).to_list(100)
+    
+    # Get user's subjects to include subject names
+    subjects = await db.subjects.find({
+        "user_id": share_data["user_id"]
+    }).to_list(100)
+    
+    subject_map = {str(subject["_id"]): subject["name"] for subject in subjects}
+    
+    # Process assignments for response
+    processed_assignments = []
+    for assignment in assignments:
+        # Convert dates to user timezone
+        assignment = process_dates_for_output(assignment, user_timezone)
+        
+        # Add subject name
+        subject_id = str(assignment.get("subject_id", ""))
+        assignment["subject_name"] = subject_map.get(subject_id, "Unknown Subject")
+        
+        # Remove sensitive or unnecessary fields
+        assignment.pop("user_id", None)
+        
+        processed_assignments.append(assignment)
+    
+    return {
+        "user_name": user["name"],
+        "assignments": processed_assignments,
+        "total_count": len(processed_assignments)
+    }
 
 @app.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: dict = Depends(get_current_user)):
