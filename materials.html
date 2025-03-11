@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Materials - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/materials.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="app-body">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <h1>Study<span>board</span></h1>
+                </div>
+                <button class="close-sidebar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    <span id="user-initial"></span>
+                </div>
+                <div class="user-info">
+                    <h3 id="user-name">Loading...</h3>
+                    <p id="user-email">loading@example.com</p>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="assignments.html">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="events.html">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Events</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="study-sessions.html">
+                            <i class="fas fa-clock"></i>
+                            <span>Study Sessions</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="materials.html">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Materials</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="subjects.html">
+                            <i class="fas fa-book"></i>
+                            <span>Subjects</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="goals.html">
+                            <i class="fas fa-bullseye"></i>
+                            <span>Goals</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="notes.html">
+                            <i class="fas fa-sticky-note"></i>
+                            <span>Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="statistics.html">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Statistics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <button class="toggle-sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1>Study Materials</h1>
+                <div class="header-actions">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="material-search" placeholder="Search materials...">
+                    </div>
+                    <button class="btn btn-primary" id="upload-material-btn">
+                        <i class="fas fa-upload"></i> Upload Material
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="filter-container">
+                    <div class="filter-group">
+                        <label for="file-type-filter">File Type:</label>
+                        <select id="file-type-filter" class="filter-select">
+                            <option value="all">All Types</option>
+                            <option value="document">Documents</option>
+                            <option value="image">Images</option>
+                            <option value="pdf">PDFs</option>
+                            <option value="spreadsheet">Spreadsheets</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="subject-filter">Subject:</label>
+                        <select id="subject-filter" class="filter-select">
+                            <option value="all">All Subjects</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sort-filter">Sort By:</label>
+                        <select id="sort-filter" class="filter-select">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="name_desc">Name (Z-A)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="materials-container">
+                    <div class="materials-view-toggle">
+                        <button class="view-toggle-btn active" data-view="grid">
+                            <i class="fas fa-th-large"></i> Grid
+                        </button>
+                        <button class="view-toggle-btn" data-view="list">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                    </div>
+
+                    <div class="materials-count">
+                        <p>Showing <span id="shown-materials-count">0</span> of <span id="total-materials-count">0</span> materials</p>
+                        <p class="storage-info">
+                            Storage: <span id="used-storage">0 MB</span> / <span id="total-storage">5 MB</span>
+                        </p>
+                    </div>
+
+                    <div class="materials-grid view-active" id="materials-grid">
+                        <div class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                        <!-- Materials will be loaded here in grid format -->
+                    </div>
+
+                    <div class="materials-list" id="materials-list">
+                        <!-- Materials will be loaded here in list format -->
+                    </div>
+
+                    <div class="no-materials" id="no-materials" style="display: none;">
+                        <div class="empty-state">
+                            <i class="fas fa-file-upload"></i>
+                            <h3>No materials found</h3>
+                            <p>Upload your first study material to get started</p>
+                            <button class="btn btn-primary" id="empty-upload-btn">
+                                <i class="fas fa-upload"></i> Upload Material
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Upload Material Modal -->
+    <div class="modal" id="upload-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Upload Study Material</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <p>Drag & drop your file here, or <span class="browse-link">browse</span></p>
+                        <p class="upload-info">Max file size: 5MB. Allowed formats: PDF, DOC, DOCX, TXT, JPG, PNG, XLSX, XLS</p>
+                        <input type="file" id="file-input" name="file" accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.xlsx,.xls" hidden>
+                    </div>
+                    <div class="file-preview" id="file-preview" style="display: none;">
+                        <div class="file-info">
+                            <i class="fas fa-file file-icon"></i>
+                            <div class="file-details">
+                                <p class="file-name" id="preview-file-name">filename.pdf</p>
+                                <p class="file-size" id="preview-file-size">1.2 MB</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-sm" id="remove-file-btn">
+                            <i class="fas fa-times"></i> Remove
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Material Name</label>
+                        <input type="text" id="name" name="name" placeholder="Enter a name for this material" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description (Optional)</label>
+                        <textarea id="description" name="description" placeholder="Add a description for this material"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="subject-id">Subject</label>
+                        <select id="subject-id" name="subject_id" required>
+                            <option value="">Select a subject</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="upload-progress" id="upload-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <p class="progress-text" id="progress-text">Uploading... 0%</p>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="upload-btn">Upload Material</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Material Details Modal -->
+    <div class="modal" id="material-details-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="material-detail-title">Material Details</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="material-details">
+                    <div class="material-preview" id="material-preview">
+                        <i class="fas fa-file-pdf material-preview-icon"></i>
+                    </div>
+                    <div class="material-info">
+                        <div class="info-row">
+                            <span class="info-label">Name:</span>
+                            <span class="info-value" id="detail-name">Material Name</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Description:</span>
+                            <span class="info-value" id="detail-description">Description goes here</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Subject:</span>
+                            <span class="info-value" id="detail-subject">Subject Name</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">File Type:</span>
+                            <span class="info-value" id="detail-file-type">PDF</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">File Size:</span>
+                            <span class="info-value" id="detail-file-size">1.2 MB</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Uploaded:</span>
+                            <span class="info-value" id="detail-uploaded-at">Jan 1, 2023</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="material-actions">
+                    <button type="button" class="btn btn-outline" id="download-btn">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button type="button" class="btn btn-outline" id="edit-material-btn">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button type="button" class="btn btn-danger" id="delete-material-btn">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Material Modal -->
+    <div class="modal" id="edit-material-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Material</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-material-form">
+                    <input type="hidden" id="edit-material-id">
+                    <div class="form-group">
+                        <label for="edit-name">Material Name</label>
+                        <input type="text" id="edit-name" name="name" placeholder="Enter a name for this material" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-description">Description (Optional)</label>
+                        <textarea id="edit-description" name="description" placeholder="Add a description for this material"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-subject-id">Subject</label>
+                        <select id="edit-subject-id" name="subject_id" required>
+                            <option value="">Select a subject</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="edit-cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-material-btn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Delete Material</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this material? This action cannot be undone.</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/materials.js"></script>
+</body>
+</html>

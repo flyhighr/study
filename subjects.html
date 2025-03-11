@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subjects - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/subjects.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="app-body">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <h1>Study<span>Board</span></h1>
+                </div>
+                <button class="close-sidebar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    <span id="user-initial"></span>
+                </div>
+                <div class="user-info">
+                    <h3 id="user-name">Loading...</h3>
+                    <p id="user-email">loading@example.com</p>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="assignments.html">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="events.html">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Events</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="study-sessions.html">
+                            <i class="fas fa-clock"></i>
+                            <span>Study Sessions</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="materials.html">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Materials</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="subjects.html">
+                            <i class="fas fa-book"></i>
+                            <span>Subjects</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="goals.html">
+                            <i class="fas fa-bullseye"></i>
+                            <span>Goals</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="notes.html">
+                            <i class="fas fa-sticky-note"></i>
+                            <span>Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="statistics.html">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Statistics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <button class="toggle-sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1>Subjects</h1>
+                <div class="header-actions">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="subject-search" placeholder="Search subjects...">
+                    </div>
+                    <button class="btn btn-primary" id="add-subject-btn">
+                        <i class="fas fa-plus"></i> Add Subject
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="subjects-container">
+                    <div class="subjects-view-toggle">
+                        <button class="view-toggle-btn active" data-view="grid">
+                            <i class="fas fa-th-large"></i> Grid
+                        </button>
+                        <button class="view-toggle-btn" data-view="list">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                    </div>
+
+                    <div class="subjects-count">
+                        <p>Showing <span id="shown-subjects-count">0</span> of <span id="total-subjects-count">0</span> subjects</p>
+                    </div>
+
+                    <div class="subjects-grid view-active" id="subjects-grid">
+                        <div class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                        <!-- Subjects will be loaded here in grid format -->
+                    </div>
+
+                    <div class="subjects-list" id="subjects-list">
+                        <!-- Subjects will be loaded here in list format -->
+                    </div>
+
+                    <div class="no-subjects" id="no-subjects" style="display: none;">
+                        <div class="empty-state">
+                            <i class="fas fa-book"></i>
+                            <h3>No subjects found</h3>
+                            <p>Create your first subject to get started</p>
+                            <button class="btn btn-primary" id="empty-add-btn">
+                                <i class="fas fa-plus"></i> Add Subject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Subject Modal -->
+    <div class="modal" id="subject-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Subject</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="subject-form">
+                    <input type="hidden" id="subject-id">
+                    <div class="form-group">
+                        <label for="name">Subject Name</label>
+                        <input type="text" id="name" name="name" placeholder="Enter subject name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description (Optional)</label>
+                        <textarea id="description" name="description" placeholder="Add a description for this subject" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="color">Subject Color</label>
+                        <div class="color-picker">
+                            <input type="color" id="color" name="color" value="#4287f5">
+                            <div class="color-preview" id="color-preview"></div>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-btn">Save Subject</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Delete Subject</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this subject? This action cannot be undone.</p>
+                <p class="warning-text">Note: This will remove the subject from all associated assignments, events, study sessions, materials, goals, and notes.</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/subjects.js"></script>
+</body>
+</html>

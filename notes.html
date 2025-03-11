@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/notes.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="app-body">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <h1>Study<span>board</span></h1>
+                </div>
+                <button class="close-sidebar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    <span id="user-initial"></span>
+                </div>
+                <div class="user-info">
+                    <h3 id="user-name">Loading...</h3>
+                    <p id="user-email">loading@example.com</p>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="assignments.html">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="events.html">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Events</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="study-sessions.html">
+                            <i class="fas fa-clock"></i>
+                            <span>Study Sessions</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="materials.html">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Materials</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="subjects.html">
+                            <i class="fas fa-book"></i>
+                            <span>Subjects</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="goals.html">
+                            <i class="fas fa-bullseye"></i>
+                            <span>Goals</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="notes.html">
+                            <i class="fas fa-sticky-note"></i>
+                            <span>Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="statistics.html">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Statistics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <button class="toggle-sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1>Notes</h1>
+                <div class="header-actions">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="note-search" placeholder="Search notes...">
+                    </div>
+                    <button class="btn btn-primary" id="add-note-btn">
+                        <i class="fas fa-plus"></i> Add Note
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="notes-sidebar">
+                    <div class="sidebar-section">
+                        <h3>Filters</h3>
+                        <div class="filter-group">
+                            <label for="subject-filter">Subject:</label>
+                            <select id="subject-filter" class="filter-select">
+                                <option value="all">All Subjects</option>
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="sort-filter">Sort By:</label>
+                            <select id="sort-filter" class="filter-select">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="title_asc">Title (A-Z)</option>
+                                <option value="title_desc">Title (Z-A)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>Tags</h3>
+                        <div class="tags-container" id="tags-container">
+                            <div class="loading-spinner">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                            <!-- Tags will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notes-container">
+                    <div class="notes-view-toggle">
+                        <button class="view-toggle-btn active" data-view="grid">
+                            <i class="fas fa-th-large"></i> Grid
+                        </button>
+                        <button class="view-toggle-btn" data-view="list">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                    </div>
+
+                    <div class="notes-count">
+                        <p>Showing <span id="shown-notes-count">0</span> of <span id="total-notes-count">0</span> notes</p>
+                    </div>
+
+                    <div class="notes-grid view-active" id="notes-grid">
+                        <div class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                        <!-- Notes will be loaded here in grid format -->
+                    </div>
+
+                    <div class="notes-list" id="notes-list">
+                        <!-- Notes will be loaded here in list format -->
+                    </div>
+
+                    <div class="no-notes" id="no-notes" style="display: none;">
+                        <div class="empty-state">
+                            <i class="fas fa-sticky-note"></i>
+                            <h3>No notes found</h3>
+                            <p>Create your first note to get started</p>
+                            <button class="btn btn-primary" id="empty-add-btn">
+                                <i class="fas fa-plus"></i> Add Note
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Note Modal -->
+    <div class="modal" id="note-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Note</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="note-form">
+                    <input type="hidden" id="note-id">
+                    <div class="form-group">
+                        <label for="title">Title</label>
+                        <input type="text" id="title" name="title" placeholder="Note title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="content">Content</label>
+                        <textarea id="content" name="content" placeholder="Write your note here..." rows="10" required></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="subject-id">Subject (Optional)</label>
+                            <select id="subject-id" name="subject_id">
+                                <option value="">No Subject</option>
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="tags">Tags (Separate with commas)</label>
+                            <input type="text" id="tags" name="tags" placeholder="e.g. important, exam, review">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-btn">Save Note</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Note View Modal -->
+    <div class="modal" id="note-view-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="view-title">Note Title</h2>
+                <div class="modal-header-actions">
+                    <button class="btn btn-icon" id="edit-note-btn">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-icon" id="delete-note-btn">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="close-modal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="note-view-info">
+                    <div class="info-item">
+                        <i class="fas fa-bookmark"></i>
+                        <span id="view-subject">No Subject</span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-calendar"></i>
+                        <span id="view-date">Jan 1, 2023</span>
+                    </div>
+                </div>
+                <div class="note-view-tags" id="view-tags">
+                    <!-- Tags will be added here -->
+                </div>
+                <div class="note-view-content" id="view-content">
+                    <!-- Note content will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Delete Note</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this note? This action cannot be undone.</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/notes.js"></script>
+</body>
+</html>

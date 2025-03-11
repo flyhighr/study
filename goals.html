@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Goals - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/goals.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="app-body">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <h1>Study<span>board</span></h1>
+                </div>
+                <button class="close-sidebar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    <span id="user-initial"></span>
+                </div>
+                <div class="user-info">
+                    <h3 id="user-name">Loading...</h3>
+                    <p id="user-email">loading@example.com</p>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="assignments.html">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="events.html">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Events</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="study-sessions.html">
+                            <i class="fas fa-clock"></i>
+                            <span>Study Sessions</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="materials.html">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Materials</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="subjects.html">
+                            <i class="fas fa-book"></i>
+                            <span>Subjects</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="goals.html">
+                            <i class="fas fa-bullseye"></i>
+                            <span>Goals</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="notes.html">
+                            <i class="fas fa-sticky-note"></i>
+                            <span>Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="statistics.html">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Statistics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <button class="toggle-sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1>Academic Goals</h1>
+                <div class="header-actions">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="goal-search" placeholder="Search goals...">
+                    </div>
+                    <button class="btn btn-primary" id="add-goal-btn">
+                        <i class="fas fa-plus"></i> Add Goal
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="filter-container">
+                    <div class="filter-group">
+                        <label for="status-filter">Status:</label>
+                        <select id="status-filter" class="filter-select">
+                            <option value="all">All</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="subject-filter">Subject:</label>
+                        <select id="subject-filter" class="filter-select">
+                            <option value="all">All Subjects</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="time-filter">Time Frame:</label>
+                        <select id="time-filter" class="filter-select">
+                            <option value="all">All</option>
+                            <option value="this_month">This Month</option>
+                            <option value="this_semester">This Semester</option>
+                            <option value="this_year">This Year</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="goals-overview">
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-flag"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Total Goals</h3>
+                            <p id="total-goals">0</p>
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-spinner"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>In Progress</h3>
+                            <p id="in-progress-goals">0</p>
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Completed</h3>
+                            <p id="completed-goals">0</p>
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Completion Rate</h3>
+                            <p id="completion-rate">0%</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="goals-container">
+                    <div class="goals-view-toggle">
+                        <button class="view-toggle-btn active" data-view="kanban">
+                            <i class="fas fa-columns"></i> Kanban
+                        </button>
+                        <button class="view-toggle-btn" data-view="list">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                    </div>
+
+                    <div class="kanban-view view-active" id="kanban-view">
+                        <div class="kanban-column">
+                            <div class="column-header">
+                                <h3>In Progress</h3>
+                                <span class="goal-count" id="in-progress-count">0</span>
+                            </div>
+                            <div class="column-body" id="in-progress-column">
+                                <div class="loading-spinner">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                </div>
+                                <!-- In progress goals will be loaded here -->
+                            </div>
+                        </div>
+                        <div class="kanban-column">
+                            <div class="column-header">
+                                <h3>Completed</h3>
+                                <span class="goal-count" id="completed-count">0</span>
+                            </div>
+                            <div class="column-body" id="completed-column">
+                                <div class="loading-spinner">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                </div>
+                                <!-- Completed goals will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="list-view" id="list-view">
+                        <div class="goals-list" id="goals-list">
+                            <div class="loading-spinner">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                            <!-- Goals will be loaded here in list format -->
+                        </div>
+                    </div>
+
+                    <div class="no-goals" id="no-goals" style="display: none;">
+                        <div class="empty-state">
+                            <i class="fas fa-bullseye"></i>
+                            <h3>No goals found</h3>
+                            <p>Set your first academic goal to get started</p>
+                            <button class="btn btn-primary" id="empty-add-btn">
+                                <i class="fas fa-plus"></i> Add Goal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Goal Modal -->
+    <div class="modal" id="goal-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Goal</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="goal-form">
+                    <input type="hidden" id="goal-id">
+                    <div class="form-group">
+                        <label for="title">Goal Title</label>
+                        <input type="text" id="title" name="title" placeholder="What do you want to achieve?" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description" placeholder="Describe your goal in detail" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="target-date">Target Date</label>
+                            <input type="date" id="target-date" name="target_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="subject-id">Related Subject (Optional)</label>
+                            <select id="subject-id" name="subject_id">
+                                <option value="">No Subject</option>
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="milestones">Milestones</label>
+                        <div class="milestones-container" id="milestones-container">
+                            <!-- Milestones will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-outline btn-sm" id="add-milestone-btn">
+                            <i class="fas fa-plus"></i> Add Milestone
+                        </button>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-btn">Save Goal</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Delete Goal</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this goal? This action cannot be undone.</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/goals.js"></script>
+</body>
+</html>
