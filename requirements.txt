@@ -13,3 +13,4 @@ aiohttp==3.8.4
 slowapi==0.1.7
 pyjwt
 pytz
+secure-smtplib
