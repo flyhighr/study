@@ -411,3 +411,75 @@
         grid-template-columns: 1fr;
     }
 }
+/* Share button styles */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+#share-assignments-btn {
+    margin-right: var(--spacing-sm);
+}
+
+/* Share modal styles */
+.share-link-container {
+    display: flex;
+    width: 100%;
+    margin: var(--spacing-md) 0;
+}
+
+.share-link-container input {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-right: none;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-md) 0 0 var(--border-radius-md);
+    background-color: var(--background-color);
+}
+
+.share-link-container .copy-btn {
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.share-note {
+    font-size: var(--font-size-sm);
+    color: var(--text-light);
+    font-style: italic;
+    margin-top: var(--spacing-xs);
+}
+
+/* Responsive styles for share functionality */
+@media (max-width: 768px) {
+    .header-actions {
+        flex-wrap: wrap;
+    }
+    
+    .search-bar {
+        width: 100%;
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    #share-assignments-btn,
+    #add-assignment-btn {
+        flex: 1;
+    }
+    
+    .share-link-container {
+        flex-direction: column;
+    }
+    
+    .share-link-container input {
+        border-right: 1px solid var(--border-color);
+        border-radius: var(--border-radius-md);
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .share-link-container .copy-btn {
+        border-radius: var(--border-radius-md);
+    }
+}
