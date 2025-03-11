@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Studyboard - Loading Shared Assignment</title>
+    <title>Studyboard - Loading</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -108,13 +108,14 @@
             background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 24px;
+            border-radius: 6px;
             font-weight: 500;
             cursor: pointer;
             text-decoration: none;
             transition: background-color 0.3s;
             margin-top: 20px;
+            font-size: 16px;
         }
 
         .btn:hover {
@@ -163,6 +164,13 @@
             background-color: #f9f9f9;
             border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .assignment-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         .assignment-status {
@@ -184,38 +192,41 @@
 
         .assignment-content {
             flex: 1;
-            padding: 15px;
+            padding: 18px;
         }
 
         .assignment-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .assignment-header h3 {
             font-size: 18px;
             margin: 0;
+            line-height: 1.3;
         }
 
         .assignment-description {
             color: var(--text-muted);
             margin-bottom: 15px;
             font-size: 14px;
+            line-height: 1.5;
         }
 
         .assignment-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 12px;
             font-size: 13px;
         }
 
         .subject-tag {
-            padding: 4px 8px;
+            padding: 5px 10px;
             border-radius: 4px;
             color: white;
+            font-weight: 500;
         }
 
         .due-date {
@@ -251,6 +262,7 @@
             margin-bottom: 20px;
             color: var(--text-muted);
             font-size: 14px;
+            padding: 0 5px;
         }
 
         .no-assignments {
@@ -263,6 +275,65 @@
             font-size: 50px;
             margin-bottom: 15px;
             opacity: 0.5;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .logo h1 {
+                font-size: 24px;
+            }
+
+            .user-avatar {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
+            .user-name {
+                font-size: 18px;
+            }
+
+            .assignment-content {
+                padding: 15px;
+            }
+
+            .assignment-header h3 {
+                font-size: 16px;
+            }
+
+            .assignment-meta {
+                gap: 8px;
+                font-size: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 15px;
+            }
+
+            .user-info {
+                margin-bottom: 20px;
+            }
+
+            .assignment-meta {
+                flex-direction: column;
+                gap: 6px;
+                margin-top: 10px;
+            }
+
+            .subject-tag {
+                display: inline-block;
+                margin-bottom: 5px;
+            }
+            
+            .assignment-description {
+                font-size: 13px;
+            }
         }
     </style>
 </head>
@@ -280,7 +351,7 @@
 
         <div id="error-container" class="error-container">
             <i class="fas fa-exclamation-circle error-icon"></i>
-            <h2>404 - Not Found</h2>
+            <h2>404 - Page Not Found</h2>
             <p>The shared assignments link you're looking for doesn't exist or has expired.</p>
             <a href="/" class="btn">Go to Homepage</a>
         </div>
@@ -353,6 +424,9 @@
                     const assignmentsList = document.getElementById('assignments-list');
                     assignmentsList.innerHTML = '';
                     
+                    // Sort assignments by due date (closest first)
+                    data.assignments.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+                    
                     data.assignments.forEach(assignment => {
                         const dueDate = new Date(assignment.due_date);
                         const isOverdue = dueDate < new Date();
@@ -375,11 +449,11 @@
                                     </span>
                                     <span class="due-date ${isOverdue ? 'overdue' : ''}">
                                         <i class="fas fa-calendar-alt"></i>
-                                        ${formatDate(dueDate)}
+                                        ${formatDate(dueDate)} ${isOverdue ? '(Overdue)' : ''}
                                     </span>
                                     <span class="priority ${assignment.priority}">
                                         <i class="fas fa-flag"></i>
-                                        ${capitalizeFirstLetter(assignment.priority)}
+                                        ${capitalizeFirstLetter(assignment.priority)} Priority
                                     </span>
                                 </div>
                             </div>
@@ -397,6 +471,8 @@
         function showError() {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('error-container').style.display = 'block';
+            // Update page title for error state
+            document.title = "Studyboard - Page Not Found";
         }
 
         function formatDate(date) {
