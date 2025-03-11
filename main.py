@@ -78,6 +78,9 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://username:password@cluster.mong
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
 db = client.studentdashboard
 
+# Initialize GridFS for file storage
+fs = AsyncIOMotorGridFSBucket(db)
+
 # Create indexes for better performance
 async def create_indexes():
     await db.users.create_index([("email", ASCENDING)], unique=True)
@@ -1217,7 +1220,6 @@ async def delete_study_session(
     await db.study_sessions.delete_one({"_id": ObjectId(session_id)})
     return None
 
-# Materials (File Upload) endpoints
 @app.post("/materials", response_model=MaterialResponse, status_code=201)
 @limiter.limit("10/minute")
 async def upload_material(
@@ -1247,11 +1249,11 @@ async def upload_material(
             detail=f"You've reached the maximum limit of {MAX_FILES_PER_USER} files. Please delete some files before uploading more."
         )
     
-    # Validate file size
-    file_size = 0
+    # Read file content
     file_content = await file.read()
     file_size = len(file_content)
     
+    # Validate file size
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=400,
@@ -1269,10 +1271,6 @@ async def upload_material(
     # Generate unique filename
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     
-    # In a real production environment, you'd store this in a cloud storage
-    # For this example, we'll simulate file storage by recording metadata
-    file_path = f"uploads/{unique_filename}"
-    
     # Determine file type category
     file_type = "document"
     if file_ext in [".jpg", ".jpeg", ".png", ".gif"]:
@@ -1282,13 +1280,25 @@ async def upload_material(
     elif file_ext in [".pdf"]:
         file_type = "pdf"
     
+    # Store file in GridFS
+    file_id = await fs.upload_from_stream(
+        unique_filename,
+        io.BytesIO(file_content),
+        metadata={
+            "content_type": mimetypes.guess_type(file.filename)[0] or "application/octet-stream",
+            "user_id": str(current_user["_id"]),
+            "original_filename": file.filename
+        }
+    )
+    
     # Create material record
     new_material = {
         "name": name,
         "description": description,
         "file_type": file_type,
         "file_size": file_size,
-        "file_path": file_path,
+        "file_path": str(file_id),  # Store GridFS file ID as the path
+        "original_filename": file.filename,  # Store original filename
         "subject_id": ObjectId(subject_id),
         "user_id": ObjectId(current_user["_id"]),
         "uploaded_at": datetime.utcnow()
@@ -1298,6 +1308,86 @@ async def upload_material(
     created_material = await db.materials.find_one({"_id": result.inserted_id})
     
     return created_material
+
+@app.get("/materials/download/{material_id}")
+@limiter.limit("20/minute")
+async def download_material(
+    request: Request,
+    material_id: str,
+    token: Optional[str] = Query(None),
+    current_user: Optional[dict] = None
+):
+    # Allow authentication via token parameter or regular auth
+    if token and not current_user:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user_id = payload.get("user_id")
+            if user_id:
+                current_user = await db.users.find_one({"_id": ObjectId(user_id)})
+        except:
+            pass
+    
+    # If still no current_user, use the regular auth dependency
+    if not current_user:
+        current_user = await get_current_user(Depends(oauth2_scheme))
+    
+    try:
+        # Check if material exists and belongs to user
+        material = await db.materials.find_one({
+            "_id": ObjectId(material_id),
+            "user_id": ObjectId(current_user["_id"])
+        })
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid material ID format")
+    
+    if not material:
+        raise HTTPException(status_code=404, detail="Material not found")
+    
+    # Get file ID from file_path
+    try:
+        file_id = ObjectId(material["file_path"])
+    except InvalidId:
+        raise HTTPException(status_code=500, detail="Invalid file reference")
+    
+    try:
+        # Create a GridOut object to get the file
+        grid_out = await fs.open_download_stream(file_id)
+        
+        # Get file data
+        chunks = []
+        async for chunk in grid_out:
+            chunks.append(chunk)
+        
+        # Combine chunks
+        file_data = b''.join(chunks)
+        
+        # Get content type from metadata or guess from filename
+        content_type = grid_out.metadata.get("content_type", "application/octet-stream")
+        
+        # Get original filename or use material name with extension
+        original_filename = material.get("original_filename") or f"{material['name']}"
+        if not os.path.splitext(original_filename)[1]:
+            # Add extension if missing
+            if material["file_type"] == "pdf":
+                original_filename += ".pdf"
+            elif material["file_type"] == "document":
+                original_filename += ".docx"
+            elif material["file_type"] == "spreadsheet":
+                original_filename += ".xlsx"
+            elif material["file_type"] == "image":
+                original_filename += ".jpg"
+        
+        # Return file as streaming response
+        return StreamingResponse(
+            io.BytesIO(file_data),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{original_filename}\""
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving file")
 
 @app.get("/materials", response_model=List[MaterialResponse])
 @limiter.limit("60/minute")
@@ -1412,13 +1502,18 @@ async def delete_material(
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
     
-    # Delete material
+    # Delete the file from GridFS
+    try:
+        file_id = ObjectId(material["file_path"])
+        await fs.delete(file_id)
+    except Exception as e:
+        logger.error(f"Error deleting file from GridFS: {str(e)}")
+    
+    # Delete material record
     await db.materials.delete_one({"_id": ObjectId(material_id)})
     
-    # In a real production environment, you'd also delete the file from storage
-    
     return None
-
+    
 # Goal endpoints
 @app.post("/goals", response_model=GoalResponse, status_code=201)
 @limiter.limit("30/minute")
