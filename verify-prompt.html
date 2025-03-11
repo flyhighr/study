@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-image">
+            <div class="overlay"></div>
+            <div class="auth-image-content">
+                <h2>Email Verification Required</h2>
+                <p>Please verify your email to continue using Studyboard</p>
+            </div>
+        </div>
+        <div class="auth-form-container">
+            <div class="logo">
+                <a href="index.html">
+                    <h1>Study<span>board</span></h1>
+                </a>
+            </div>
+            <div class="verification-prompt">
+                <i class="fas fa-envelope fa-3x" style="color: var(--primary-color);"></i>
+                <h3>Verify Your Email Address</h3>
+                <p>A verification link has been sent to your email address. Please check your inbox and click the link to verify your account.</p>
+                <p class="user-email" id="user-email"></p>
+                
+                <div class="action-buttons">
+                    <button id="resend-verification" class="btn btn-primary btn-block">Resend Verification Email</button>
+                    <button id="logout-btn" class="btn btn-secondary btn-block">Sign Out</button>
+                </div>
+                
+                <div class="resend-status" id="resend-status" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/verify-prompt.js"></script>
+</body>
+</html>

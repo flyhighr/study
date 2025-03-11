@@ -111,6 +111,9 @@
                         <i class="fas fa-search"></i>
                         <input type="text" id="assignment-search" placeholder="Search assignments...">
                     </div>
+                    <button class="btn btn-secondary" id="share-assignments-btn">
+                        <i class="fas fa-share-alt"></i> Share
+                    </button>
                     <button class="btn btn-primary" id="add-assignment-btn">
                         <i class="fas fa-plus"></i> Add Assignment
                     </button>
@@ -271,6 +274,31 @@
                     <button type="button" class="btn btn-outline" id="delete-cancel-btn">Cancel</button>
                     <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Link Modal -->
+    <div class="modal" id="share-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Share Your Assignments</h2>
+                <button class="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Share this link with others to let them see your upcoming assignments:</p>
+                <div class="share-link-container">
+                    <input type="text" id="share-link" readonly>
+                    <button class="btn btn-primary copy-btn" id="copy-link-btn">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                <p class="share-note">This link will expire in 7 days.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="share-close-btn">Close</button>
             </div>
         </div>
     </div>

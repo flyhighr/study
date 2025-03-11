@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Email - Studyboard</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-image">
+            <div class="overlay"></div>
+            <div class="auth-image-content">
+                <h2>Verify Your Email</h2>
+                <p>Complete your registration by verifying your email address</p>
+            </div>
+        </div>
+        <div class="auth-form-container">
+            <div class="logo">
+                <a href="index.html">
+                    <h1>Study<span>board</span></h1>
+                </a>
+            </div>
+            <div id="verification-content">
+                <div class="verification-loading">
+                    <i class="fas fa-spinner fa-spin fa-3x"></i>
+                    <p>Verifying your email...</p>
+                </div>
+                
+                <div class="verification-success" style="display: none;">
+                    <i class="fas fa-check-circle fa-3x" style="color: var(--success-color);"></i>
+                    <h3>Email Verified Successfully!</h3>
+                    <p>Your email has been verified. You can now sign in to your account.</p>
+                    <a href="login.html" class="btn btn-primary btn-block">Sign In</a>
+                </div>
+                
+                <div class="verification-error" style="display: none;">
+                    <i class="fas fa-times-circle fa-3x" style="color: var(--danger-color);"></i>
+                    <h3>Verification Failed</h3>
+                    <p id="error-message">There was a problem verifying your email. The link may be invalid or expired.</p>
+                    <button id="resend-btn" class="btn btn-secondary btn-block">Resend Verification Email</button>
+                    <a href="login.html" class="btn btn-link">Back to Sign In</a>
+                </div>
+                
+                <div class="resend-form" style="display: none;">
+                    <h3>Resend Verification Email</h3>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                        </div>
+                    </div>
+                    <button id="submit-resend" class="btn btn-primary btn-block">Send Verification Link</button>
+                    <a href="login.html" class="btn btn-link">Back to Sign In</a>
+                </div>
+                
+                <div class="resend-success" style="display: none;">
+                    <i class="fas fa-paper-plane fa-3x" style="color: var(--primary-color);"></i>
+                    <h3>Verification Email Sent</h3>
+                    <p>A new verification link has been sent to your email address. Please check your inbox and click the link to verify your account.</p>
+                    <a href="login.html" class="btn btn-primary btn-block">Back to Sign In</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/verify-email.js"></script>
+</body>
+</html>
