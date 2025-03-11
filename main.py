@@ -2316,7 +2316,6 @@ async def get_statistics(
             "completion_rate": goal_completion_rate
         }
     }
-
 @app.post("/export/pdf")
 @limiter.limit("5/minute")
 async def export_pdf(
@@ -2336,17 +2335,12 @@ async def export_pdf(
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         
-        # Get user timezone
-        user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
-        
         # Parse data
         export_data = json.loads(data)
         
         # Generate PDF
         # This would typically use a library like ReportLab, PyPDF2, or WeasyPrint
         # For this example, we'll create a simple HTML response that could be printed as PDF
-        
-        now_in_user_tz = convert_to_user_timezone(datetime.now(timezone.utc), user_timezone)
         
         html_content = f"""
         <!DOCTYPE html>
@@ -2367,10 +2361,9 @@ async def export_pdf(
         <body>
             <div class="header">
                 <h1>Study Dashboard Export</h1>
-                <p class="date">Generated on {now_in_user_tz.strftime("%B %d, %Y %H:%M")}</p>
+                <p class="date">Generated on {datetime.utcnow().strftime("%B %d, %Y %H:%M")}</p>
             </div>
             <p>User: {user.get('name')} ({user.get('email')})</p>
-            <p>Timezone: {user_timezone}</p>
         """
         
         # Add assignments if present
@@ -2384,15 +2377,14 @@ async def export_pdf(
                     <th>Priority</th>
                     <th>Status</th>
                 </tr>
+            """
+            
             for assignment in export_data['assignments']:
-                # Convert due_date string to datetime and to user's timezone
-                due_date_utc = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
-                due_date = convert_to_user_timezone(due_date_utc, user_timezone)
-                
+                due_date = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
                 html_content += f"""
                 <tr>
                     <td>{assignment['title']}</td>
-                    <td>{due_date.strftime("%b %d, %Y %H:%M")}</td>
+                    <td>{due_date.strftime("%b %d, %Y")}</td>
                     <td>{assignment['priority']}</td>
                     <td>{assignment['status']}</td>
                 </tr>
@@ -2414,13 +2406,8 @@ async def export_pdf(
             """
             
             for event in export_data['events']:
-                # Convert times to user's timezone
-                start_time_utc = datetime.fromisoformat(event['start_time'].replace('Z', '+00:00'))
-                end_time_utc = datetime.fromisoformat(event['end_time'].replace('Z', '+00:00'))
-                
-                start_time = convert_to_user_timezone(start_time_utc, user_timezone)
-                end_time = convert_to_user_timezone(end_time_utc, user_timezone)
-                
+                start_time = datetime.fromisoformat(event['start_time'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(event['end_time'].replace('Z', '+00:00'))
                 html_content += f"""
                 <tr>
                     <td>{event['title']}</td>
@@ -2446,16 +2433,13 @@ async def export_pdf(
             """
             
             for session in export_data['study_sessions']:
-                # Convert scheduled_date to user's timezone
-                scheduled_date_utc = datetime.fromisoformat(session['scheduled_date'].replace('Z', '+00:00'))
-                scheduled_date = convert_to_user_timezone(scheduled_date_utc, user_timezone)
-                
+                scheduled_date = datetime.fromisoformat(session['scheduled_date'].replace('Z', '+00:00'))
                 completed = "Yes" if session.get('completed', False) else "No"
                 actual_duration = f"{session.get('actual_duration', 0)} min" if session.get('completed', False) else "-"
                 
                 html_content += f"""
                 <tr>
-                    <td>{scheduled_date.strftime("%b %d, %Y %H:%M")}</td>
+                    <td>{scheduled_date.strftime("%b %d, %Y")}</td>
                     <td>{session['planned_duration']} min</td>
                     <td>{actual_duration}</td>
                     <td>{completed}</td>
@@ -2478,10 +2462,7 @@ async def export_pdf(
             """
             
             for goal in export_data['goals']:
-                # Convert target_date to user's timezone
-                target_date_utc = datetime.fromisoformat(goal['target_date'].replace('Z', '+00:00'))
-                target_date = convert_to_user_timezone(target_date_utc, user_timezone)
-                
+                target_date = datetime.fromisoformat(goal['target_date'].replace('Z', '+00:00'))
                 completed = "Yes" if goal.get('completed', False) else "No"
                 
                 html_content += f"""
