@@ -1062,6 +1062,12 @@ async def get_shared_assignments(request: Request, share_id: str):
     # Process assignments for response
     processed_assignments = []
     for assignment in assignments:
+        # Convert ObjectId to string
+        assignment["_id"] = str(assignment["_id"])
+        assignment["user_id"] = str(assignment["user_id"])
+        if "subject_id" in assignment and assignment["subject_id"]:
+            assignment["subject_id"] = str(assignment["subject_id"])
+        
         # Convert dates to user timezone
         assignment = process_dates_for_output(assignment, user_timezone)
         
@@ -1079,7 +1085,6 @@ async def get_shared_assignments(request: Request, share_id: str):
         "assignments": processed_assignments,
         "total_count": len(processed_assignments)
     }
-
 @app.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     user_data = {**current_user}
