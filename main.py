@@ -17,7 +17,7 @@ from bson.errors import InvalidId
 import jwt
 import bcrypt
 import os
-import uuid
+import uuid, random
 import time
 import motor.motor_asyncio
 from email_validator import validate_email, EmailNotValidError
