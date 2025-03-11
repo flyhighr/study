@@ -471,7 +471,30 @@ class StatisticsResponse(BaseModel):
     class Config:
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
+class DailyStudyData(BaseModel):
+    date: str
+    hours: float
 
+class GoalStats(BaseModel):
+    total: int
+    completed: int
+    completion_rate: float
+
+class StatisticsResponse(BaseModel):
+    total_assignments: int
+    completed_assignments: int
+    pending_assignments: int
+    upcoming_events: int
+    study_hours: float
+    subject_stats: List[Dict[str, Any]]
+    daily_study_data: List[DailyStudyData]
+    avg_session_duration: float
+    goal_stats: GoalStats
+    
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+        
 # Authentication Functions
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
@@ -1875,6 +1898,34 @@ async def get_statistics(
     
     study_hours = sum(session.get("actual_duration", 0) for session in study_sessions) / 60.0
     
+    # Daily study data for last 7 days
+    daily_study_data = []
+    today = datetime.utcnow()
+    
+    for i in range(7):
+        day_date = today - timedelta(days=6-i)
+        day_start = datetime(day_date.year, day_date.month, day_date.day, 0, 0, 0)
+        day_end = datetime(day_date.year, day_date.month, day_date.day, 23, 59, 59)
+        
+        day_sessions = await db.study_sessions.find({
+            "user_id": user_id,
+            "completed": True,
+            "completed_at": {"$gte": day_start, "$lte": day_end}
+        }).to_list(100)
+        
+        day_minutes = sum(session.get("actual_duration", 0) for session in day_sessions)
+        
+        daily_study_data.append({
+            "date": day_date.strftime("%a"),
+            "hours": day_minutes / 60.0
+        })
+    
+    # Average session duration
+    if study_sessions:
+        avg_session_duration = sum(session.get("actual_duration", 0) for session in study_sessions) / len(study_sessions)
+    else:
+        avg_session_duration = 0
+    
     # Subject statistics
     subjects = await db.subjects.find({"user_id": user_id}).to_list(100)
     subject_stats = []
@@ -1921,15 +1972,203 @@ async def get_statistics(
             "completion_percentage": completion_percentage
         })
     
+    # Goal statistics
+    goals = await db.goals.find({
+        "user_id": user_id,
+        "created_at": {"$gte": start_date, "$lte": end_date}
+    }).to_list(100)
+    
+    total_goals = len(goals)
+    completed_goals = sum(1 for goal in goals if goal.get("completed", False))
+    goal_completion_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 0
+    
     return {
         "total_assignments": total_assignments,
         "completed_assignments": completed_assignments,
         "pending_assignments": pending_assignments,
         "upcoming_events": upcoming_events,
         "study_hours": study_hours,
-        "subject_stats": subject_stats
+        "subject_stats": subject_stats,
+        "daily_study_data": daily_study_data,
+        "avg_session_duration": avg_session_duration,
+        "goal_stats": {
+            "total": total_goals,
+            "completed": completed_goals,
+            "completion_rate": goal_completion_rate
+        }
     }
 
+@app.post("/export/pdf")
+@limiter.limit("5/minute")
+async def export_pdf(
+    request: Request,
+    data: str = Form(...),
+    token: str = Form(...)
+):
+    try:
+        # Validate token
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Get user
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        # Parse data
+        export_data = json.loads(data)
+        
+        # Generate PDF
+        # This would typically use a library like ReportLab, PyPDF2, or WeasyPrint
+        # For this example, we'll create a simple HTML response that could be printed as PDF
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Study Dashboard Export</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                h1 {{ color: #4a6cf7; }}
+                h2 {{ color: #333; margin-top: 20px; }}
+                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #f2f2f2; }}
+                .header {{ display: flex; justify-content: space-between; align-items: center; }}
+                .date {{ color: #666; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Study Dashboard Export</h1>
+                <p class="date">Generated on {datetime.utcnow().strftime("%B %d, %Y %H:%M")}</p>
+            </div>
+            <p>User: {user.get('name')} ({user.get('email')})</p>
+        """
+        
+        # Add assignments if present
+        if 'assignments' in export_data and export_data['assignments']:
+            html_content += f"""
+            <h2>Assignments ({len(export_data['assignments'])})</h2>
+            <table>
+                <tr>
+                    <th>Title</th>
+                    <th>Due Date</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                </tr>
+            """
+            
+            for assignment in export_data['assignments']:
+                due_date = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
+                html_content += f"""
+                <tr>
+                    <td>{assignment['title']}</td>
+                    <td>{due_date.strftime("%b %d, %Y")}</td>
+                    <td>{assignment['priority']}</td>
+                    <td>{assignment['status']}</td>
+                </tr>
+                """
+            
+            html_content += "</table>"
+        
+        # Add events if present
+        if 'events' in export_data and export_data['events']:
+            html_content += f"""
+            <h2>Events ({len(export_data['events'])})</h2>
+            <table>
+                <tr>
+                    <th>Title</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Type</th>
+                </tr>
+            """
+            
+            for event in export_data['events']:
+                start_time = datetime.fromisoformat(event['start_time'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(event['end_time'].replace('Z', '+00:00'))
+                html_content += f"""
+                <tr>
+                    <td>{event['title']}</td>
+                    <td>{start_time.strftime("%b %d, %Y %H:%M")}</td>
+                    <td>{end_time.strftime("%b %d, %Y %H:%M")}</td>
+                    <td>{event['type']}</td>
+                </tr>
+                """
+            
+            html_content += "</table>"
+        
+        # Add study sessions if present
+        if 'study_sessions' in export_data and export_data['study_sessions']:
+            html_content += f"""
+            <h2>Study Sessions ({len(export_data['study_sessions'])})</h2>
+            <table>
+                <tr>
+                    <th>Date</th>
+                    <th>Planned Duration</th>
+                    <th>Actual Duration</th>
+                    <th>Completed</th>
+                </tr>
+            """
+            
+            for session in export_data['study_sessions']:
+                scheduled_date = datetime.fromisoformat(session['scheduled_date'].replace('Z', '+00:00'))
+                completed = "Yes" if session.get('completed', False) else "No"
+                actual_duration = f"{session.get('actual_duration', 0)} min" if session.get('completed', False) else "-"
+                
+                html_content += f"""
+                <tr>
+                    <td>{scheduled_date.strftime("%b %d, %Y")}</td>
+                    <td>{session['planned_duration']} min</td>
+                    <td>{actual_duration}</td>
+                    <td>{completed}</td>
+                </tr>
+                """
+            
+            html_content += "</table>"
+        
+        # Add goals if present
+        if 'goals' in export_data and export_data['goals']:
+            html_content += f"""
+            <h2>Goals ({len(export_data['goals'])})</h2>
+            <table>
+                <tr>
+                    <th>Title</th>
+                    <th>Target Date</th>
+                    <th>Progress</th>
+                    <th>Completed</th>
+                </tr>
+            """
+            
+            for goal in export_data['goals']:
+                target_date = datetime.fromisoformat(goal['target_date'].replace('Z', '+00:00'))
+                completed = "Yes" if goal.get('completed', False) else "No"
+                
+                html_content += f"""
+                <tr>
+                    <td>{goal['title']}</td>
+                    <td>{target_date.strftime("%b %d, %Y")}</td>
+                    <td>{goal.get('progress', 0)}%</td>
+                    <td>{completed}</td>
+                </tr>
+                """
+            
+            html_content += "</table>"
+        
+        html_content += """
+        </body>
+        </html>
+        """
+        
+        return HTMLResponse(content=html_content, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"Error generating PDF export: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate export")
+        
 # Health check endpoint for self-ping
 @app.get("/health")
 async def health_check():
