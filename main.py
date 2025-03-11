@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form, Query
 from gridfs import GridFS
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 import io
