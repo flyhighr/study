@@ -1,5 +1,8 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form
+from gridfs import GridFS
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+import io
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
