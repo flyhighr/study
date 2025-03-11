@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 import io
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
@@ -35,6 +35,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
+import json
+import pytz
+from datetime import datetime, timezone
 
 # Load environment variables
 load_dotenv()
@@ -108,6 +111,12 @@ ALLOWED_EXTENSIONS = {
 }
 MAX_FILES_PER_USER = 10
 
+# Default timezone if none is set
+DEFAULT_TIMEZONE = "UTC"
+
+# List of valid timezones
+VALID_TIMEZONES = pytz.all_timezones
+
 # Self-ping mechanism to prevent Render from shutting down
 async def ping_server():
     app_url = os.getenv("APP_URL", "https://your-app-url.onrender.com")
@@ -129,6 +138,68 @@ async def startup_event():
     await create_indexes()
     asyncio.create_task(start_ping_task())
 
+# Timezone conversion utilities
+def convert_to_user_timezone(utc_datetime, user_timezone):
+    """Convert UTC datetime to user's timezone"""
+    if not utc_datetime:
+        return None
+    
+    # Ensure datetime has UTC timezone
+    if utc_datetime.tzinfo is None:
+        utc_datetime = utc_datetime.replace(tzinfo=timezone.utc)
+    
+    # Convert to user timezone
+    try:
+        user_tz = pytz.timezone(user_timezone)
+        return utc_datetime.astimezone(user_tz)
+    except:
+        # Fallback to UTC if timezone is invalid
+        return utc_datetime
+
+def convert_to_utc(local_datetime, user_timezone):
+    """Convert local datetime to UTC"""
+    if not local_datetime:
+        return None
+    
+    # If datetime already has timezone info, convert to UTC
+    if local_datetime.tzinfo is not None:
+        return local_datetime.astimezone(timezone.utc)
+    
+    # Otherwise, assume it's in user's timezone and convert to UTC
+    try:
+        user_tz = pytz.timezone(user_timezone)
+        local_with_tz = user_tz.localize(local_datetime)
+        return local_with_tz.astimezone(timezone.utc)
+    except:
+        # Fallback to assuming it's UTC already if timezone is invalid
+        return local_datetime.replace(tzinfo=timezone.utc)
+
+def process_dates_for_output(data, user_timezone):
+    """Process all date fields in data for output to user's timezone"""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = convert_to_user_timezone(value, user_timezone)
+            elif isinstance(value, dict) or isinstance(value, list):
+                data[key] = process_dates_for_output(value, user_timezone)
+    elif isinstance(data, list):
+        for i, item in enumerate(data):
+            data[i] = process_dates_for_output(item, user_timezone)
+    return data
+
+def process_dates_for_input(data, user_timezone):
+    """Process all date fields in data from user's timezone to UTC"""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = convert_to_utc(value, user_timezone)
+            elif isinstance(value, dict) or isinstance(value, list):
+                data[key] = process_dates_for_input(value, user_timezone)
+    elif isinstance(data, list):
+        for i, item in enumerate(data):
+            data[i] = process_dates_for_input(item, user_timezone)
+    return data
+
 # Pydantic Models
 class PyObjectId(str):
     @classmethod
@@ -148,6 +219,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: str
+    timezone: Optional[str] = DEFAULT_TIMEZONE
     
     @validator('password')
     def password_strength(cls, v):
@@ -160,17 +232,35 @@ class UserCreate(BaseModel):
         if not any(c.isdigit() for c in v):
             raise ValueError('Password must contain at least one number')
         return v
+    
+    @validator('timezone')
+    def validate_timezone(cls, v):
+        if v not in VALID_TIMEZONES:
+            raise ValueError(f'Invalid timezone. Please use a valid timezone identifier.')
+        return v
 
 class UserResponse(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     email: EmailStr
     name: str
+    timezone: str = DEFAULT_TIMEZONE
     created_at: datetime
 
     class Config:
         allow_population_by_field_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    timezone: Optional[str] = None
+    
+    @validator('timezone')
+    def validate_timezone(cls, v):
+        if v is not None and v not in VALID_TIMEZONES:
+            raise ValueError(f'Invalid timezone. Please use a valid timezone identifier.')
+        return v
 
 class Token(BaseModel):
     access_token: str
@@ -309,6 +399,12 @@ class EventUpdate(BaseModel):
         if v is not None and v not in ["exam", "holiday", "personal"]:
             raise ValueError('Type must be exam, holiday, or personal')
         return v
+    
+    @validator('end_time')
+    def validate_end_time(cls, v, values, **kwargs):
+        if v is not None and 'start_time' in values and values['start_time'] is not None and v < values['start_time']:
+            raise ValueError('End time must be after start time')
+        return v
 
 class StudySessionCreate(BaseModel):
     subject_id: PyObjectId
@@ -400,8 +496,7 @@ class GoalCreate(BaseModel):
     
     @validator('target_date')
     def validate_target_date(cls, v):
-        if v < datetime.now():
-            raise ValueError('Target date must be in the future')
+        # This validation will be handled with timezone context in the endpoint
         return v
 
 class GoalResponse(BaseModel):
@@ -460,17 +555,6 @@ class NoteUpdate(BaseModel):
     subject_id: Optional[PyObjectId] = None
     tags: Optional[List[str]] = None
 
-class StatisticsResponse(BaseModel):
-    total_assignments: int
-    completed_assignments: int
-    pending_assignments: int
-    upcoming_events: int
-    study_hours: float
-    subject_stats: List[Dict[str, Any]]
-    
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
 class DailyStudyData(BaseModel):
     date: str
     hours: float
@@ -507,9 +591,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=JWT_EXPIRATION_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRATION_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
@@ -553,12 +637,17 @@ async def register_user(request: Request, user: UserCreate):
     # Hash password
     hashed_password = hash_password(user.password)
     
+    # Set default timezone if not provided
+    if not user.timezone:
+        user.timezone = DEFAULT_TIMEZONE
+    
     # Create user document
     new_user = {
         "email": user.email,
         "password": hashed_password,
         "name": user.name,
-        "created_at": datetime.utcnow()
+        "timezone": user.timezone,
+        "created_at": datetime.now(timezone.utc)
     }
     
     # Insert into database
@@ -606,6 +695,40 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
     user_data.pop("password", None)
     return user_data
 
+@app.put("/users/me", response_model=UserResponse)
+async def update_user(
+    user_update: UserUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Build update data from provided fields
+    update_data = {k: v for k, v in user_update.dict().items() if v is not None}
+    
+    if not update_data:
+        # No update needed if no fields provided
+        return current_user
+    
+    # Check if email is being updated and is not already taken
+    if "email" in update_data and update_data["email"] != current_user["email"]:
+        existing_user = await db.users.find_one({"email": update_data["email"]})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already taken")
+    
+    # Update user
+    await db.users.update_one(
+        {"_id": ObjectId(current_user["_id"])},
+        {"$set": update_data}
+    )
+    
+    # Return updated user
+    updated_user = await db.users.find_one({"_id": ObjectId(current_user["_id"])})
+    updated_user.pop("password")
+    return updated_user
+
+@app.get("/timezones")
+async def get_timezones():
+    """Return a list of valid timezones"""
+    return {"timezones": VALID_TIMEZONES}
+
 # Subject endpoints
 @app.post("/subjects", response_model=SubjectResponse, status_code=201)
 @limiter.limit("30/minute")
@@ -613,7 +736,7 @@ async def create_subject(request: Request, subject: SubjectCreate, current_user:
     new_subject = {
         **subject.dict(),
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.subjects.insert_one(new_subject)
@@ -678,7 +801,7 @@ async def update_subject(
     # Update only provided fields
     update_data = {k: v for k, v in subject_update.dict().items() if v is not None}
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.subjects.update_one(
             {"_id": ObjectId(subject_id)},
             {"$set": update_data}
@@ -762,14 +885,22 @@ async def create_assignment(
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert due_date from user timezone to UTC
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    assignment_dict = assignment.dict()
+    assignment_dict["due_date"] = convert_to_utc(assignment_dict["due_date"], user_timezone)
+    
     new_assignment = {
-        **assignment.dict(),
+        **assignment_dict,
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.assignments.insert_one(new_assignment)
     created_assignment = await db.assignments.find_one({"_id": result.inserted_id})
+    
+    # Convert dates back to user timezone for response
+    created_assignment = process_dates_for_output(created_assignment, user_timezone)
     
     return created_assignment
 
@@ -786,6 +917,9 @@ async def get_assignments(
     due_after: Optional[datetime] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Build filter query
     query = {"user_id": ObjectId(current_user["_id"])}
     
@@ -807,15 +941,22 @@ async def get_assignments(
     
     date_query = {}
     if due_before:
-        date_query["$lte"] = due_before
+        # Convert due_before from user timezone to UTC
+        due_before_utc = convert_to_utc(due_before, user_timezone)
+        date_query["$lte"] = due_before_utc
     if due_after:
-        date_query["$gte"] = due_after
+        # Convert due_after from user timezone to UTC
+        due_after_utc = convert_to_utc(due_after, user_timezone)
+        date_query["$gte"] = due_after_utc
     
     if date_query:
         query["due_date"] = date_query
     
     # Get assignments with filters
     assignments = await db.assignments.find(query).sort("due_date", 1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert dates to user timezone for response
+    assignments = process_dates_for_output(assignments, user_timezone)
     
     return assignments
 
@@ -836,6 +977,10 @@ async def get_assignment(
     
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    assignment = process_dates_for_output(assignment, user_timezone)
     
     return assignment
 
@@ -872,9 +1017,14 @@ async def update_assignment(
         except InvalidId:
             raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert due_date from user timezone to UTC if provided
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    if "due_date" in update_data:
+        update_data["due_date"] = convert_to_utc(update_data["due_date"], user_timezone)
+    
     # Update assignment
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.assignments.update_one(
             {"_id": ObjectId(assignment_id)},
             {"$set": update_data}
@@ -882,6 +1032,10 @@ async def update_assignment(
     
     # Return updated assignment
     updated_assignment = await db.assignments.find_one({"_id": ObjectId(assignment_id)})
+    
+    # Convert dates to user timezone for response
+    updated_assignment = process_dates_for_output(updated_assignment, user_timezone)
+    
     return updated_assignment
 
 @app.delete("/assignments/{assignment_id}", status_code=204)
@@ -927,14 +1081,23 @@ async def create_event(
         except InvalidId:
             raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert dates from user timezone to UTC
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    event_dict = event.dict()
+    event_dict["start_time"] = convert_to_utc(event_dict["start_time"], user_timezone)
+    event_dict["end_time"] = convert_to_utc(event_dict["end_time"], user_timezone)
+    
     new_event = {
-        **event.dict(),
+        **event_dict,
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.events.insert_one(new_event)
     created_event = await db.events.find_one({"_id": result.inserted_id})
+    
+    # Convert dates back to user timezone for response
+    created_event = process_dates_for_output(created_event, user_timezone)
     
     return created_event
 
@@ -950,6 +1113,9 @@ async def get_events(
     start_before: Optional[datetime] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Build filter query
     query = {"user_id": ObjectId(current_user["_id"])}
     
@@ -966,15 +1132,22 @@ async def get_events(
     
     date_query = {}
     if start_after:
-        date_query["$gte"] = start_after
+        # Convert start_after from user timezone to UTC
+        start_after_utc = convert_to_utc(start_after, user_timezone)
+        date_query["$gte"] = start_after_utc
     if start_before:
-        date_query["$lte"] = start_before
+        # Convert start_before from user timezone to UTC
+        start_before_utc = convert_to_utc(start_before, user_timezone)
+        date_query["$lte"] = start_before_utc
     
     if date_query:
         query["start_time"] = date_query
     
     # Get events with filters
     events = await db.events.find(query).sort("start_time", 1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert dates to user timezone for response
+    events = process_dates_for_output(events, user_timezone)
     
     return events
 
@@ -995,6 +1168,10 @@ async def get_event(
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    event = process_dates_for_output(event, user_timezone)
     
     return event
 
@@ -1018,6 +1195,9 @@ async def update_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Validate subject_id if provided
     update_data = {k: v for k, v in event_update.dict().items() if v is not None}
     if "subject_id" in update_data and update_data["subject_id"]:
@@ -1031,22 +1211,30 @@ async def update_event(
         except InvalidId:
             raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert datetime fields from user timezone to UTC
+    if "start_time" in update_data:
+        update_data["start_time"] = convert_to_utc(update_data["start_time"], user_timezone)
+    if "end_time" in update_data:
+        update_data["end_time"] = convert_to_utc(update_data["end_time"], user_timezone)
+    
     # Validate start/end time logic if both are provided
     if "start_time" in update_data and "end_time" in update_data:
         if update_data["end_time"] < update_data["start_time"]:
             raise HTTPException(status_code=400, detail="End time must be after start time")
     elif "start_time" in update_data:
         # Only start_time is being updated, check against existing end_time
-        if update_data["start_time"] > event["end_time"]:
+        end_time_utc = event["end_time"]
+        if update_data["start_time"] > end_time_utc:
             raise HTTPException(status_code=400, detail="Start time must be before end time")
     elif "end_time" in update_data:
         # Only end_time is being updated, check against existing start_time
-        if update_data["end_time"] < event["start_time"]:
+        start_time_utc = event["start_time"]
+        if update_data["end_time"] < start_time_utc:
             raise HTTPException(status_code=400, detail="End time must be after start time")
     
     # Update event
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.events.update_one(
             {"_id": ObjectId(event_id)},
             {"$set": update_data}
@@ -1054,6 +1242,10 @@ async def update_event(
     
     # Return updated event
     updated_event = await db.events.find_one({"_id": ObjectId(event_id)})
+    
+    # Convert dates to user timezone for response
+    updated_event = process_dates_for_output(updated_event, user_timezone)
+    
     return updated_event
 
 @app.delete("/events/{event_id}", status_code=204)
@@ -1098,17 +1290,25 @@ async def create_study_session(
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert scheduled_date from user timezone to UTC
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    session_dict = study_session.dict()
+    session_dict["scheduled_date"] = convert_to_utc(session_dict["scheduled_date"], user_timezone)
+    
     new_study_session = {
-        **study_session.dict(),
+        **session_dict,
         "user_id": ObjectId(current_user["_id"]),
         "completed": False,
         "actual_duration": None,
         "completed_at": None,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.study_sessions.insert_one(new_study_session)
     created_study_session = await db.study_sessions.find_one({"_id": result.inserted_id})
+    
+    # Convert dates to user timezone for response
+    created_study_session = process_dates_for_output(created_study_session, user_timezone)
     
     return created_study_session
 
@@ -1124,6 +1324,9 @@ async def get_study_sessions(
     scheduled_before: Optional[datetime] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Build filter query
     query = {"user_id": ObjectId(current_user["_id"])}
     
@@ -1138,15 +1341,22 @@ async def get_study_sessions(
     
     date_query = {}
     if scheduled_after:
-        date_query["$gte"] = scheduled_after
+        # Convert scheduled_after from user timezone to UTC
+        scheduled_after_utc = convert_to_utc(scheduled_after, user_timezone)
+        date_query["$gte"] = scheduled_after_utc
     if scheduled_before:
-        date_query["$lte"] = scheduled_before
+        # Convert scheduled_before from user timezone to UTC
+        scheduled_before_utc = convert_to_utc(scheduled_before, user_timezone)
+        date_query["$lte"] = scheduled_before_utc
     
     if date_query:
         query["scheduled_date"] = date_query
     
     # Get study sessions with filters
     study_sessions = await db.study_sessions.find(query).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert dates to user timezone for response
+    study_sessions = process_dates_for_output(study_sessions, user_timezone)
     
     return study_sessions
 
@@ -1167,6 +1377,10 @@ async def get_study_session(
     
     if not study_session:
         raise HTTPException(status_code=404, detail="Study session not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    study_session = process_dates_for_output(study_session, user_timezone)
     
     return study_session
 
@@ -1190,6 +1404,9 @@ async def update_study_session(
     if not study_session:
         raise HTTPException(status_code=404, detail="Study session not found")
     
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Validate subject_id if provided
     update_data = {k: v for k, v in session_update.dict().items() if v is not None}
     if "subject_id" in update_data:
@@ -1203,15 +1420,21 @@ async def update_study_session(
         except InvalidId:
             raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert datetime fields from user timezone to UTC
+    if "scheduled_date" in update_data:
+        update_data["scheduled_date"] = convert_to_utc(update_data["scheduled_date"], user_timezone)
+    if "completed_at" in update_data and update_data["completed_at"]:
+        update_data["completed_at"] = convert_to_utc(update_data["completed_at"], user_timezone)
+    
     # Handle completed logic
     if "completed" in update_data and update_data["completed"] and not study_session["completed"]:
         # Mark as completed now if not already completed
         if "completed_at" not in update_data or update_data["completed_at"] is None:
-            update_data["completed_at"] = datetime.utcnow()
+            update_data["completed_at"] = datetime.now(timezone.utc)
     
     # Update study session
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.study_sessions.update_one(
             {"_id": ObjectId(session_id)},
             {"$set": update_data}
@@ -1219,6 +1442,10 @@ async def update_study_session(
     
     # Return updated study session
     updated_session = await db.study_sessions.find_one({"_id": ObjectId(session_id)})
+    
+    # Convert dates to user timezone for response
+    updated_session = process_dates_for_output(updated_session, user_timezone)
+    
     return updated_session
 
 @app.delete("/study-sessions/{session_id}", status_code=204)
@@ -1325,11 +1552,15 @@ async def upload_material(
         "original_filename": file.filename,  # Store original filename
         "subject_id": ObjectId(subject_id),
         "user_id": ObjectId(current_user["_id"]),
-        "uploaded_at": datetime.utcnow()
+        "uploaded_at": datetime.now(timezone.utc)
     }
     
     result = await db.materials.insert_one(new_material)
     created_material = await db.materials.find_one({"_id": result.inserted_id})
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    created_material = process_dates_for_output(created_material, user_timezone)
     
     return created_material
 
@@ -1440,6 +1671,10 @@ async def get_materials(
     # Get materials with filters
     materials = await db.materials.find(query).sort("uploaded_at", -1).skip(skip).limit(limit).to_list(limit)
     
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    materials = process_dates_for_output(materials, user_timezone)
+    
     return materials
 
 @app.get("/materials/{material_id}", response_model=MaterialResponse)
@@ -1459,6 +1694,10 @@ async def get_material(
     
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    material = process_dates_for_output(material, user_timezone)
     
     return material
 
@@ -1497,7 +1736,7 @@ async def update_material(
     
     # Update material
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.materials.update_one(
             {"_id": ObjectId(material_id)},
             {"$set": update_data}
@@ -1505,6 +1744,11 @@ async def update_material(
     
     # Return updated material
     updated_material = await db.materials.find_one({"_id": ObjectId(material_id)})
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    updated_material = process_dates_for_output(updated_material, user_timezone)
+    
     return updated_material
 
 @app.delete("/materials/{material_id}", status_code=204)
@@ -1563,17 +1807,34 @@ async def create_goal(
         if "completed" not in milestone:
             milestone["completed"] = False
     
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
+    # Validate target date is in the future (using user's timezone)
+    now_in_user_tz = convert_to_user_timezone(datetime.now(timezone.utc), user_timezone)
+    target_date_in_user_tz = goal.target_date
+    
+    if target_date_in_user_tz.replace(tzinfo=None) < now_in_user_tz.replace(tzinfo=None):
+        raise HTTPException(status_code=400, detail="Target date must be in the future")
+    
+    # Convert target_date from user timezone to UTC
+    goal_dict = goal.dict()
+    goal_dict["target_date"] = convert_to_utc(goal_dict["target_date"], user_timezone)
+    
     new_goal = {
-        **goal.dict(),
+        **goal_dict,
         "user_id": ObjectId(current_user["_id"]),
         "progress": 0,
         "completed": False,
         "completed_at": None,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.goals.insert_one(new_goal)
     created_goal = await db.goals.find_one({"_id": result.inserted_id})
+    
+    # Convert dates back to user timezone for response
+    created_goal = process_dates_for_output(created_goal, user_timezone)
     
     return created_goal
 
@@ -1602,6 +1863,10 @@ async def get_goals(
     # Get goals with filters
     goals = await db.goals.find(query).sort("target_date", 1).skip(skip).limit(limit).to_list(limit)
     
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    goals = process_dates_for_output(goals, user_timezone)
+    
     return goals
 
 @app.get("/goals/{goal_id}", response_model=GoalResponse)
@@ -1621,6 +1886,10 @@ async def get_goal(
     
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    goal = process_dates_for_output(goal, user_timezone)
     
     return goal
 
@@ -1644,6 +1913,9 @@ async def update_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
     
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Validate subject_id if provided
     update_data = {k: v for k, v in goal_update.dict().items() if v is not None}
     if "subject_id" in update_data and update_data["subject_id"]:
@@ -1657,15 +1929,27 @@ async def update_goal(
         except InvalidId:
             raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
+    # Convert datetime fields from user timezone to UTC
+    if "target_date" in update_data:
+        # Validate target date is in the future (in user's timezone)
+        now_in_user_tz = convert_to_user_timezone(datetime.now(timezone.utc), user_timezone)
+        if update_data["target_date"].replace(tzinfo=None) < now_in_user_tz.replace(tzinfo=None):
+            raise HTTPException(status_code=400, detail="Target date must be in the future")
+        
+        update_data["target_date"] = convert_to_utc(update_data["target_date"], user_timezone)
+    
+    if "completed_at" in update_data and update_data["completed_at"]:
+        update_data["completed_at"] = convert_to_utc(update_data["completed_at"], user_timezone)
+    
     # Handle completed logic
     if "completed" in update_data and update_data["completed"] and not goal["completed"]:
         # Mark as completed now if not already completed
         if "completed_at" not in update_data or update_data["completed_at"] is None:
-            update_data["completed_at"] = datetime.utcnow()
+            update_data["completed_at"] = datetime.now(timezone.utc)
     
     # Update goal
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.goals.update_one(
             {"_id": ObjectId(goal_id)},
             {"$set": update_data}
@@ -1673,6 +1957,10 @@ async def update_goal(
     
     # Return updated goal
     updated_goal = await db.goals.find_one({"_id": ObjectId(goal_id)})
+    
+    # Convert dates to user timezone for response
+    updated_goal = process_dates_for_output(updated_goal, user_timezone)
+    
     return updated_goal
 
 @app.delete("/goals/{goal_id}", status_code=204)
@@ -1721,11 +2009,15 @@ async def create_note(
     new_note = {
         **note.dict(),
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await db.notes.insert_one(new_note)
     created_note = await db.notes.find_one({"_id": result.inserted_id})
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    created_note = process_dates_for_output(created_note, user_timezone)
     
     return created_note
 
@@ -1762,6 +2054,10 @@ async def get_notes(
     # Get notes with filters
     notes = await db.notes.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    notes = process_dates_for_output(notes, user_timezone)
+    
     return notes
 
 @app.get("/notes/{note_id}", response_model=NoteResponse)
@@ -1781,6 +2077,10 @@ async def get_note(
     
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    note = process_dates_for_output(note, user_timezone)
     
     return note
 
@@ -1819,7 +2119,7 @@ async def update_note(
     
     # Update note
     if update_data:
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         await db.notes.update_one(
             {"_id": ObjectId(note_id)},
             {"$set": update_data}
@@ -1827,6 +2127,11 @@ async def update_note(
     
     # Return updated note
     updated_note = await db.notes.find_one({"_id": ObjectId(note_id)})
+    
+    # Convert dates to user timezone for response
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    updated_note = process_dates_for_output(updated_note, user_timezone)
+    
     return updated_note
 
 @app.delete("/notes/{note_id}", status_code=204)
@@ -1861,24 +2166,32 @@ async def get_statistics(
     end_date: Optional[datetime] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    # Get user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    
     # Default to last 30 days if no dates provided
+    now = datetime.now(timezone.utc)
     if not end_date:
-        end_date = datetime.utcnow()
+        end_date = now
     if not start_date:
         start_date = end_date - timedelta(days=30)
+    
+    # Convert dates from user timezone to UTC
+    start_date_utc = convert_to_utc(start_date, user_timezone)
+    end_date_utc = convert_to_utc(end_date, user_timezone)
     
     user_id = ObjectId(current_user["_id"])
     
     # Assignment statistics
     total_assignments = await db.assignments.count_documents({
         "user_id": user_id,
-        "created_at": {"$gte": start_date, "$lte": end_date}
+        "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
     })
     
     completed_assignments = await db.assignments.count_documents({
         "user_id": user_id,
         "status": "completed",
-        "created_at": {"$gte": start_date, "$lte": end_date}
+        "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
     })
     
     pending_assignments = total_assignments - completed_assignments
@@ -1886,37 +2199,43 @@ async def get_statistics(
     # Upcoming events
     upcoming_events = await db.events.count_documents({
         "user_id": user_id,
-        "start_time": {"$gte": datetime.utcnow()}
+        "start_time": {"$gte": now}
     })
     
     # Study hours
     study_sessions = await db.study_sessions.find({
         "user_id": user_id,
         "completed": True,
-        "completed_at": {"$gte": start_date, "$lte": end_date}
+        "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
     }).to_list(1000)
     
     study_hours = sum(session.get("actual_duration", 0) for session in study_sessions) / 60.0
     
     # Daily study data for last 7 days
     daily_study_data = []
-    today = datetime.utcnow()
+    today_utc = now
     
     for i in range(7):
-        day_date = today - timedelta(days=6-i)
-        day_start = datetime(day_date.year, day_date.month, day_date.day, 0, 0, 0)
-        day_end = datetime(day_date.year, day_date.month, day_date.day, 23, 59, 59)
+        day_date = today_utc - timedelta(days=6-i)
+        # Convert to user timezone for day boundaries
+        day_date_user_tz = convert_to_user_timezone(day_date, user_timezone)
+        day_start_user_tz = datetime(day_date_user_tz.year, day_date_user_tz.month, day_date_user_tz.day, 0, 0, 0)
+        day_end_user_tz = datetime(day_date_user_tz.year, day_date_user_tz.month, day_date_user_tz.day, 23, 59, 59)
+        
+        # Convert back to UTC for query
+        day_start_utc = convert_to_utc(day_start_user_tz, user_timezone)
+        day_end_utc = convert_to_utc(day_end_user_tz, user_timezone)
         
         day_sessions = await db.study_sessions.find({
             "user_id": user_id,
             "completed": True,
-            "completed_at": {"$gte": day_start, "$lte": day_end}
+            "completed_at": {"$gte": day_start_utc, "$lte": day_end_utc}
         }).to_list(100)
         
         day_minutes = sum(session.get("actual_duration", 0) for session in day_sessions)
         
         daily_study_data.append({
-            "date": day_date.strftime("%a"),
+            "date": day_date_user_tz.strftime("%a"),
             "hours": day_minutes / 60.0
         })
     
@@ -1937,14 +2256,14 @@ async def get_statistics(
         subject_assignments = await db.assignments.count_documents({
             "user_id": user_id,
             "subject_id": subject_id,
-            "created_at": {"$gte": start_date, "$lte": end_date}
+            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
         })
         
         completed_subject_assignments = await db.assignments.count_documents({
             "user_id": user_id,
             "subject_id": subject_id,
             "status": "completed",
-            "created_at": {"$gte": start_date, "$lte": end_date}
+            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
         })
         
         # Study time for this subject
@@ -1952,7 +2271,7 @@ async def get_statistics(
             "user_id": user_id,
             "subject_id": subject_id,
             "completed": True,
-            "completed_at": {"$gte": start_date, "$lte": end_date}
+            "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
         }).to_list(1000)
         
         subject_study_hours = sum(session.get("actual_duration", 0) for session in subject_sessions) / 60.0
@@ -1975,7 +2294,7 @@ async def get_statistics(
     # Goal statistics
     goals = await db.goals.find({
         "user_id": user_id,
-        "created_at": {"$gte": start_date, "$lte": end_date}
+        "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
     }).to_list(100)
     
     total_goals = len(goals)
@@ -2017,12 +2336,17 @@ async def export_pdf(
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         
+        # Get user timezone
+        user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
+        
         # Parse data
         export_data = json.loads(data)
         
         # Generate PDF
         # This would typically use a library like ReportLab, PyPDF2, or WeasyPrint
         # For this example, we'll create a simple HTML response that could be printed as PDF
+        
+        now_in_user_tz = convert_to_user_timezone(datetime.now(timezone.utc), user_timezone)
         
         html_content = f"""
         <!DOCTYPE html>
@@ -2043,9 +2367,10 @@ async def export_pdf(
         <body>
             <div class="header">
                 <h1>Study Dashboard Export</h1>
-                <p class="date">Generated on {datetime.utcnow().strftime("%B %d, %Y %H:%M")}</p>
+                <p class="date">Generated on {now_in_user_tz.strftime("%B %d, %Y %H:%M")}</p>
             </div>
             <p>User: {user.get('name')} ({user.get('email')})</p>
+            <p>Timezone: {user_timezone}</p>
         """
         
         # Add assignments if present
@@ -2059,14 +2384,15 @@ async def export_pdf(
                     <th>Priority</th>
                     <th>Status</th>
                 </tr>
-            """
-            
             for assignment in export_data['assignments']:
-                due_date = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
+                # Convert due_date string to datetime and to user's timezone
+                due_date_utc = datetime.fromisoformat(assignment['due_date'].replace('Z', '+00:00'))
+                due_date = convert_to_user_timezone(due_date_utc, user_timezone)
+                
                 html_content += f"""
                 <tr>
                     <td>{assignment['title']}</td>
-                    <td>{due_date.strftime("%b %d, %Y")}</td>
+                    <td>{due_date.strftime("%b %d, %Y %H:%M")}</td>
                     <td>{assignment['priority']}</td>
                     <td>{assignment['status']}</td>
                 </tr>
@@ -2088,8 +2414,13 @@ async def export_pdf(
             """
             
             for event in export_data['events']:
-                start_time = datetime.fromisoformat(event['start_time'].replace('Z', '+00:00'))
-                end_time = datetime.fromisoformat(event['end_time'].replace('Z', '+00:00'))
+                # Convert times to user's timezone
+                start_time_utc = datetime.fromisoformat(event['start_time'].replace('Z', '+00:00'))
+                end_time_utc = datetime.fromisoformat(event['end_time'].replace('Z', '+00:00'))
+                
+                start_time = convert_to_user_timezone(start_time_utc, user_timezone)
+                end_time = convert_to_user_timezone(end_time_utc, user_timezone)
+                
                 html_content += f"""
                 <tr>
                     <td>{event['title']}</td>
@@ -2115,13 +2446,16 @@ async def export_pdf(
             """
             
             for session in export_data['study_sessions']:
-                scheduled_date = datetime.fromisoformat(session['scheduled_date'].replace('Z', '+00:00'))
+                # Convert scheduled_date to user's timezone
+                scheduled_date_utc = datetime.fromisoformat(session['scheduled_date'].replace('Z', '+00:00'))
+                scheduled_date = convert_to_user_timezone(scheduled_date_utc, user_timezone)
+                
                 completed = "Yes" if session.get('completed', False) else "No"
                 actual_duration = f"{session.get('actual_duration', 0)} min" if session.get('completed', False) else "-"
                 
                 html_content += f"""
                 <tr>
-                    <td>{scheduled_date.strftime("%b %d, %Y")}</td>
+                    <td>{scheduled_date.strftime("%b %d, %Y %H:%M")}</td>
                     <td>{session['planned_duration']} min</td>
                     <td>{actual_duration}</td>
                     <td>{completed}</td>
@@ -2144,7 +2478,10 @@ async def export_pdf(
             """
             
             for goal in export_data['goals']:
-                target_date = datetime.fromisoformat(goal['target_date'].replace('Z', '+00:00'))
+                # Convert target_date to user's timezone
+                target_date_utc = datetime.fromisoformat(goal['target_date'].replace('Z', '+00:00'))
+                target_date = convert_to_user_timezone(target_date_utc, user_timezone)
+                
                 completed = "Yes" if goal.get('completed', False) else "No"
                 
                 html_content += f"""
@@ -2172,7 +2509,7 @@ async def export_pdf(
 # Health check endpoint for self-ping
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "timestamp": datetime.utcnow()}
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc)}
 
 # Run the application
 if __name__ == "__main__":
