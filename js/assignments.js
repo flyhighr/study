@@ -127,6 +127,15 @@ function initEventListeners() {
     document.querySelectorAll('.view-toggle-btn').forEach(button => {
         button.addEventListener('click', toggleView);
     });
+
+    // Share assignments button
+    document.getElementById('share-assignments-btn').addEventListener('click', createShareableLink);
+    
+    // Copy link button
+    document.getElementById('copy-link-btn').addEventListener('click', copyShareLink);
+    
+    // Share close button
+    document.getElementById('share-close-btn').addEventListener('click', closeModals);
     
     // Search functionality
     document.getElementById('assignment-search').addEventListener('input', debounce(filterAssignments, 300));
@@ -144,6 +153,70 @@ function initEventListeners() {
             }
         });
     });
+}
+
+// Create shareable link function
+async function createShareableLink() {
+    try {
+        const token = localStorage.getItem('accessToken');
+        
+        // Show loading state
+        const shareBtn = document.getElementById('share-assignments-btn');
+        shareBtn.disabled = true;
+        shareBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating link...';
+        
+        const response = await fetch('https://study-o5hp.onrender.com/assignments/share', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to create shareable link');
+        }
+        
+        const data = await response.json();
+        
+        // Reset share button
+        shareBtn.disabled = false;
+        shareBtn.innerHTML = '<i class="fas fa-share-alt"></i> Share';
+        
+        // Show the share modal with the link
+        document.getElementById('share-link').value = data.share_link;
+        document.getElementById('share-modal').classList.add('active');
+        document.body.classList.add('modal-open');
+        
+        // Select the link text for easy copying
+        document.getElementById('share-link').select();
+        
+    } catch (error) {
+        console.error('Error creating shareable link:', error);
+        
+        // Reset share button
+        const shareBtn = document.getElementById('share-assignments-btn');
+        shareBtn.disabled = false;
+        shareBtn.innerHTML = '<i class="fas fa-share-alt"></i> Share';
+        
+        // Show error message
+        alert('Failed to create shareable link. Please try again.');
+    }
+}
+
+// Copy share link function
+function copyShareLink() {
+    const shareLink = document.getElementById('share-link');
+    shareLink.select();
+    document.execCommand('copy');
+    
+    // Change button text temporarily
+    const copyBtn = document.getElementById('copy-link-btn');
+    copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    
+    setTimeout(() => {
+        copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+    }, 2000);
 }
 
 // Fix for the loadAssignments function to prevent duplicate subjects

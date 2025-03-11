@@ -1,5 +1,3 @@
-// login.js - For the login page functionality
-
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('login-form');
     const errorMessage = document.getElementById('error-message');
@@ -51,6 +49,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
                 
                 if (!response.ok) {
+                    // Check if the error is about email verification
+                    if (response.status === 403 && data.detail && data.detail.includes('not verified')) {
+                        // Store email for verification prompt
+                        localStorage.setItem('unverifiedEmail', email);
+                        
+                        // Redirect to verification prompt
+                        window.location.href = 'verify-prompt.html';
+                        return;
+                    }
+                    
                     throw new Error(data.detail || 'Login failed. Please check your credentials.');
                 }
                 

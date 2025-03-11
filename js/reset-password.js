@@ -1,8 +1,21 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const registerForm = document.getElementById('register-form');
+    // Get token from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    
+    const resetLoading = document.querySelector('.reset-password-loading');
+    const resetForm = document.querySelector('.reset-password-form');
+    const resetSuccess = document.querySelector('.reset-password-success');
+    const resetError = document.querySelector('.reset-password-error');
     const errorMessage = document.getElementById('error-message');
+    const resetPasswordForm = document.getElementById('reset-password-form');
     const togglePasswordBtn = document.querySelector('.toggle-password');
     const passwordInput = document.getElementById('password');
+    
+    // Store token in hidden field
+    if (token && document.getElementById('reset-token')) {
+        document.getElementById('reset-token').value = token;
+    }
     
     // Toggle password visibility
     if (togglePasswordBtn && passwordInput) {
@@ -19,25 +32,34 @@ document.addEventListener('DOMContentLoaded', function() {
         passwordInput.addEventListener('input', checkPasswordStrength);
     }
     
+    // Validate token
+    if (token) {
+        // Show form - in a real app, you might validate the token first
+        resetLoading.style.display = 'none';
+        resetForm.style.display = 'block';
+    } else {
+        // No token provided
+        resetLoading.style.display = 'none';
+        resetError.style.display = 'block';
+    }
+    
     // Handle form submission
-    if (registerForm) {
-        registerForm.addEventListener('submit', async function(e) {
+    if (resetPasswordForm) {
+        resetPasswordForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // Get form data
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
+            const token = document.getElementById('reset-token').value;
             const password = document.getElementById('password').value;
-            const termsChecked = document.getElementById('terms').checked;
+            const confirmPassword = document.getElementById('confirm-password').value;
             
             // Validate form
-            if (!name || !email || !password) {
+            if (!password || !confirmPassword) {
                 showError('Please fill in all required fields');
                 return;
             }
             
-            if (!termsChecked) {
-                showError('You must agree to the Terms of Service and Privacy Policy');
+            if (password !== confirmPassword) {
+                showError('Passwords do not match');
                 return;
             }
             
@@ -49,42 +71,32 @@ document.addEventListener('DOMContentLoaded', function() {
             
             try {
                 // Show loading state
-                const submitButton = registerForm.querySelector('button[type="submit"]');
+                const submitButton = resetPasswordForm.querySelector('button[type="submit"]');
                 const originalButtonText = submitButton.innerHTML;
                 submitButton.disabled = true;
-                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating account...';
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
                 
                 // Make API request
-                const response = await fetch('https://study-o5hp.onrender.com/register', {
+                const response = await fetch('https://study-o5hp.onrender.com/reset-password', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        name,
-                        email,
-                        password
+                        token,
+                        new_password: password
                     })
                 });
                 
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    throw new Error(data.detail || 'Registration failed. Please try again.');
+                    throw new Error(data.detail || 'Password reset failed. Please try again.');
                 }
                 
-                // Store email for verification prompt
-                localStorage.setItem('unverifiedEmail', email);
-                
-                // Store partial user data
-                localStorage.setItem('userData', JSON.stringify({
-                    email: email,
-                    name: name,
-                    is_verified: false
-                }));
-                
-                // Redirect to verification prompt
-                window.location.href = 'verify-prompt.html';
+                // Reset successful
+                resetForm.style.display = 'none';
+                resetSuccess.style.display = 'block';
                 
             } catch (error) {
                 // Reset button
