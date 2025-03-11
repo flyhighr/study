@@ -1,12 +1,12 @@
 # main.py
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form, Query
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request, Form, Query, Response
 from gridfs import GridFS
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
-from fastapi.responses import StreamingResponse
 import io
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
@@ -38,6 +38,9 @@ from starlette.requests import Request
 import json
 import pytz
 from datetime import datetime, timezone
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from fastapi_cache.decorator import cache
 
 import secrets
 import string
@@ -83,6 +86,9 @@ app.add_middleware(
     TrustedHostMiddleware, allowed_hosts=["*"]  # In production, replace with specific hosts
 )
 
+# Add GZIP compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://username:password@cluster.mongodb.net/studentdashboard?retryWrites=true&w=majority")
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
@@ -91,16 +97,30 @@ db = client.studentdashboard
 # Initialize GridFS for file storage
 fs = AsyncIOMotorGridFSBucket(db)
 
+# Timezone cache to avoid creating objects repeatedly
+_timezone_cache = {}
+
+def get_timezone(timezone_str):
+    if timezone_str not in _timezone_cache:
+        _timezone_cache[timezone_str] = pytz.timezone(timezone_str)
+    return _timezone_cache[timezone_str]
+
 # Create indexes for better performance
 async def create_indexes():
     await db.users.create_index([("email", ASCENDING)], unique=True)
     await db.assignments.create_index([("user_id", ASCENDING)])
+    await db.assignments.create_index([("user_id", ASCENDING), ("status", ASCENDING)])
+    await db.assignments.create_index([("user_id", ASCENDING), ("due_date", ASCENDING)])
     await db.events.create_index([("user_id", ASCENDING)])
+    await db.events.create_index([("user_id", ASCENDING), ("start_time", ASCENDING)])
     await db.study_sessions.create_index([("user_id", ASCENDING)])
+    await db.study_sessions.create_index([("user_id", ASCENDING), ("completed", ASCENDING)])
     await db.materials.create_index([("user_id", ASCENDING)])
     await db.subjects.create_index([("user_id", ASCENDING)])
     await db.goals.create_index([("user_id", ASCENDING)])
     await db.notes.create_index([("user_id", ASCENDING)])
+    # Full text search index for notes
+    await db.notes.create_index([("title", "text"), ("content", "text")])
     # New indexes for email verification and password reset
     await db.email_verification.create_index([("token", ASCENDING)], unique=True)
     await db.email_verification.create_index([("email", ASCENDING)])
@@ -112,6 +132,10 @@ async def create_indexes():
     await db.assignment_shares.create_index([("share_id", ASCENDING)], unique=True)
     await db.assignment_shares.create_index([("user_id", ASCENDING)])
     await db.assignment_shares.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+    # Notification indexes
+    await db.notifications.create_index([("user_id", ASCENDING)])
+    await db.notifications.create_index([("created_at", ASCENDING)])
+    await db.notifications.create_index([("read", ASCENDING)])
     
 # JWT Settings
 JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_key")
@@ -134,6 +158,9 @@ DEFAULT_TIMEZONE = "UTC"
 # List of valid timezones
 VALID_TIMEZONES = pytz.all_timezones
 
+# Bcrypt settings - reduced rounds for better performance
+BCRYPT_ROUNDS = 8  # Reduced from default 12
+
 # Self-ping mechanism to prevent Render from shutting down
 async def ping_server():
     app_url = os.getenv("APP_URL", "https://your-app-url.onrender.com")
@@ -149,11 +176,203 @@ async def start_ping_task():
         await ping_server()
         await asyncio.sleep(60 * 14)  # Ping every 14 minutes (Render free tier sleeps after 15 min)
 
+# Process scheduled notifications
+async def process_notifications():
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            
+            # Find assignments due soon (within 24 hours)
+            due_soon = now + timedelta(hours=24)
+            
+            # Get assignments due soon but not yet notified
+            upcoming_assignments = await db.assignments.find({
+                "due_date": {"$gt": now, "$lt": due_soon},
+                "notified": {"$ne": True},
+                "status": {"$ne": "completed"}
+            }).to_list(100)
+            
+            for assignment in upcoming_assignments:
+                user_id = assignment["user_id"]
+                user = await db.users.find_one({"_id": user_id})
+                
+                if not user:
+                    continue
+                
+                # Create notification
+                notification = {
+                    "user_id": user_id,
+                    "type": "assignment_due",
+                    "title": "Assignment Due Soon",
+                    "message": f"Your assignment '{assignment['title']}' is due in less than 24 hours.",
+                    "related_id": str(assignment["_id"]),
+                    "read": False,
+                    "created_at": now
+                }
+                
+                await db.notifications.insert_one(notification)
+                
+                # Send email notification
+                if user.get("email_notifications", True):
+                    user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
+                    due_date_user_tz = convert_to_user_timezone(assignment["due_date"], user_timezone)
+                    due_date_str = due_date_user_tz.strftime("%A, %B %d at %I:%M %p")
+                    
+                    email_content = f"""
+                    <html>
+                        <body>
+                            <h2>Assignment Due Soon</h2>
+                            <p>Hello {user['name']},</p>
+                            <p>This is a reminder that your assignment <strong>{assignment['title']}</strong> is due on {due_date_str}.</p>
+                            <p>Please log in to your dashboard to view more details.</p>
+                        </body>
+                    </html>
+                    """
+                    
+                    await send_email(
+                        to_email=user["email"],
+                        subject="Assignment Due Soon - Student Dashboard",
+                        html_content=email_content
+                    )
+                
+                # Mark as notified
+                await db.assignments.update_one(
+                    {"_id": assignment["_id"]},
+                    {"$set": {"notified": True}}
+                )
+            
+            # Find upcoming events (within 24 hours)
+            upcoming_events = await db.events.find({
+                "start_time": {"$gt": now, "$lt": due_soon},
+                "notified": {"$ne": True}
+            }).to_list(100)
+            
+            for event in upcoming_events:
+                user_id = event["user_id"]
+                user = await db.users.find_one({"_id": user_id})
+                
+                if not user:
+                    continue
+                
+                # Create notification
+                notification = {
+                    "user_id": user_id,
+                    "type": "event_upcoming",
+                    "title": "Upcoming Event",
+                    "message": f"Your event '{event['title']}' is starting in less than 24 hours.",
+                    "related_id": str(event["_id"]),
+                    "read": False,
+                    "created_at": now
+                }
+                
+                await db.notifications.insert_one(notification)
+                
+                # Send email notification
+                if user.get("email_notifications", True):
+                    user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
+                    start_time_user_tz = convert_to_user_timezone(event["start_time"], user_timezone)
+                    start_time_str = start_time_user_tz.strftime("%A, %B %d at %I:%M %p")
+                    
+                    email_content = f"""
+                    <html>
+                        <body>
+                            <h2>Upcoming Event</h2>
+                            <p>Hello {user['name']},</p>
+                            <p>This is a reminder that your event <strong>{event['title']}</strong> is starting on {start_time_str}.</p>
+                            <p>Please log in to your dashboard to view more details.</p>
+                        </body>
+                    </html>
+                    """
+                    
+                    await send_email(
+                        to_email=user["email"],
+                        subject="Upcoming Event - Student Dashboard",
+                        html_content=email_content
+                    )
+                
+                # Mark as notified
+                await db.events.update_one(
+                    {"_id": event["_id"]},
+                    {"$set": {"notified": True}}
+                )
+            
+            # Find study sessions scheduled soon (within 1 hour)
+            session_soon = now + timedelta(hours=1)
+            upcoming_sessions = await db.study_sessions.find({
+                "scheduled_date": {"$gt": now, "$lt": session_soon},
+                "notified": {"$ne": True},
+                "completed": False
+            }).to_list(100)
+            
+            for session in upcoming_sessions:
+                user_id = session["user_id"]
+                user = await db.users.find_one({"_id": user_id})
+                
+                if not user:
+                    continue
+                
+                # Create notification
+                notification = {
+                    "user_id": user_id,
+                    "type": "study_session_upcoming",
+                    "title": "Study Session Starting Soon",
+                    "message": f"Your study session is starting in less than 1 hour.",
+                    "related_id": str(session["_id"]),
+                    "read": False,
+                    "created_at": now
+                }
+                
+                await db.notifications.insert_one(notification)
+                
+                # Send email notification
+                if user.get("email_notifications", True):
+                    user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
+                    session_time_user_tz = convert_to_user_timezone(session["scheduled_date"], user_timezone)
+                    session_time_str = session_time_user_tz.strftime("%I:%M %p")
+                    
+                    # Get subject name
+                    subject = await db.subjects.find_one({"_id": session["subject_id"]})
+                    subject_name = subject["name"] if subject else "Unknown Subject"
+                    
+                    email_content = f"""
+                    <html>
+                        <body>
+                            <h2>Study Session Starting Soon</h2>
+                            <p>Hello {user['name']},</p>
+                            <p>Your study session for <strong>{subject_name}</strong> is starting at {session_time_str} today.</p>
+                            <p>Duration: {session['planned_duration']} minutes</p>
+                            <p>Please log in to your dashboard to start your session.</p>
+                        </body>
+                    </html>
+                    """
+                    
+                    await send_email(
+                        to_email=user["email"],
+                        subject="Study Session Starting Soon - Student Dashboard",
+                        html_content=email_content
+                    )
+                
+                # Mark as notified
+                await db.study_sessions.update_one(
+                    {"_id": session["_id"]},
+                    {"$set": {"notified": True}}
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in notification processing: {str(e)}")
+        
+        # Run every 15 minutes
+        await asyncio.sleep(60 * 15)
+
 # Start ping task in background
 @app.on_event("startup")
 async def startup_event():
     await create_indexes()
+    # Initialize in-memory cache
+    FastAPICache.init(InMemoryBackend())
+    # Start background tasks
     asyncio.create_task(start_ping_task())
+    asyncio.create_task(process_notifications())
 
 # Timezone conversion utilities
 def convert_to_user_timezone(utc_datetime, user_timezone):
@@ -167,7 +386,7 @@ def convert_to_user_timezone(utc_datetime, user_timezone):
     
     # Convert to user timezone
     try:
-        user_tz = pytz.timezone(user_timezone)
+        user_tz = get_timezone(user_timezone)
         return utc_datetime.astimezone(user_tz)
     except:
         # Fallback to UTC if timezone is invalid
@@ -184,7 +403,7 @@ def convert_to_utc(local_datetime, user_timezone):
     
     # Otherwise, assume it's in user's timezone and convert to UTC
     try:
-        user_tz = pytz.timezone(user_timezone)
+        user_tz = get_timezone(user_timezone)
         local_with_tz = user_tz.localize(local_datetime)
         return local_with_tz.astimezone(timezone.utc)
     except:
@@ -192,29 +411,35 @@ def convert_to_utc(local_datetime, user_timezone):
         return local_datetime.replace(tzinfo=timezone.utc)
 
 def process_dates_for_output(data, user_timezone):
-    """Process all date fields in data for output to user's timezone"""
+    """More efficient date processing for output"""
     if isinstance(data, dict):
+        result = {}
         for key, value in data.items():
             if isinstance(value, datetime):
-                data[key] = convert_to_user_timezone(value, user_timezone)
+                result[key] = convert_to_user_timezone(value, user_timezone)
             elif isinstance(value, dict) or isinstance(value, list):
-                data[key] = process_dates_for_output(value, user_timezone)
+                result[key] = process_dates_for_output(value, user_timezone)
+            else:
+                result[key] = value
+        return result
     elif isinstance(data, list):
-        for i, item in enumerate(data):
-            data[i] = process_dates_for_output(item, user_timezone)
+        return [process_dates_for_output(item, user_timezone) for item in data]
     return data
 
 def process_dates_for_input(data, user_timezone):
-    """Process all date fields in data from user's timezone to UTC"""
+    """More efficient date processing for input"""
     if isinstance(data, dict):
+        result = {}
         for key, value in data.items():
             if isinstance(value, datetime):
-                data[key] = convert_to_utc(value, user_timezone)
+                result[key] = convert_to_utc(value, user_timezone)
             elif isinstance(value, dict) or isinstance(value, list):
-                data[key] = process_dates_for_input(value, user_timezone)
+                result[key] = process_dates_for_input(value, user_timezone)
+            else:
+                result[key] = value
+        return result
     elif isinstance(data, list):
-        for i, item in enumerate(data):
-            data[i] = process_dates_for_input(item, user_timezone)
+        return [process_dates_for_input(item, user_timezone) for item in data]
     return data
 
 # Pydantic Models
@@ -264,6 +489,30 @@ class AssignmentShareResponse(BaseModel):
     share_link: str
     expires_at: Optional[datetime] = None
 
+class NotificationCreate(BaseModel):
+    type: str
+    title: str
+    message: str
+    related_id: Optional[str] = None
+
+class NotificationResponse(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    user_id: PyObjectId
+    type: str
+    title: str
+    message: str
+    related_id: Optional[str] = None
+    read: bool = False
+    created_at: datetime
+
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+class NotificationUpdate(BaseModel):
+    read: bool = True
+
 # Function to generate random tokens
 def generate_random_token(length=64):
     return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
@@ -307,6 +556,7 @@ class UserCreate(BaseModel):
     password: str
     name: str
     timezone: Optional[str] = DEFAULT_TIMEZONE
+    email_notifications: bool = True
     
     @validator('password')
     def password_strength(cls, v):
@@ -332,6 +582,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     name: str
     timezone: str = DEFAULT_TIMEZONE
+    email_notifications: bool = True
     created_at: datetime
     is_verified: bool = False
 
@@ -344,6 +595,7 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     timezone: Optional[str] = None
+    email_notifications: Optional[bool] = None
     
     @validator('timezone')
     def validate_timezone(cls, v):
@@ -670,7 +922,7 @@ class StatisticsResponse(BaseModel):
         
 # Authentication Functions
 def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)  # Reduced rounds for better performance
     hashed = bcrypt.hashpw(password.encode(), salt)
     return hashed.decode()
 
@@ -703,7 +955,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except jwt.PyJWTError:
         raise credentials_exception
     
-    user = await db.users.find_one({"_id": ObjectId(token_data.user_id)})
+    # Only fetch necessary fields
+    user = await db.users.find_one(
+        {"_id": ObjectId(token_data.user_id)},
+        {"email": 1, "name": 1, "timezone": 1, "is_verified": 1, "email_notifications": 1, "created_at": 1}
+    )
+    
     if user is None:
         raise credentials_exception
     
@@ -727,7 +984,7 @@ async def register_user(request: Request, user: UserCreate):
         raise HTTPException(status_code=400, detail="Invalid email format")
     
     # Check if user exists
-    existing_user = await db.users.find_one({"email": user.email})
+    existing_user = await db.users.find_one({"email": user.email}, {"_id": 1})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -744,6 +1001,7 @@ async def register_user(request: Request, user: UserCreate):
         "password": hashed_password,
         "name": user.name,
         "timezone": user.timezone,
+        "email_notifications": user.email_notifications,
         "is_verified": False,  # User starts as unverified
         "created_at": datetime.now(timezone.utc)
     }
@@ -797,7 +1055,6 @@ async def register_user(request: Request, user: UserCreate):
     
     # Return created user without password
     created_user = await db.users.find_one({"_id": result.inserted_id})
-    created_user.pop("password")
     return created_user
 
 # Email verification endpoint
@@ -966,8 +1223,11 @@ async def reset_password(request: Request, reset_data: ResetPassword):
 @app.post("/token", response_model=Token)
 @limiter.limit("10/minute")
 async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
-    # Find user by email
-    user = await db.users.find_one({"email": form_data.username})
+    # Find user by email - only fetch necessary fields
+    user = await db.users.find_one(
+        {"email": form_data.username},
+        {"email": 1, "password": 1, "is_verified": 1, "_id": 1}
+    )
     
     if not user or not verify_password(form_data.password, user["password"]):
         raise HTTPException(
@@ -1025,9 +1285,10 @@ async def create_assignment_share(
         "expires_at": expires_at
     }
 
-# Get shared assignments
+# Get shared assignments - enhanced version
 @app.get("/shared-assignments/{share_id}")
 @limiter.limit("30/minute")
+@cache(expire=60)  # Cache for 60 seconds
 async def get_shared_assignments(request: Request, share_id: str):
     # Find share data
     share_data = await db.assignment_shares.find_one({
@@ -1039,23 +1300,33 @@ async def get_shared_assignments(request: Request, share_id: str):
         raise HTTPException(status_code=404, detail="Shared link not found or expired")
     
     # Get user to retrieve timezone
-    user = await db.users.find_one({"_id": share_data["user_id"]})
+    user = await db.users.find_one(
+        {"_id": share_data["user_id"]},
+        {"name": 1, "timezone": 1}
+    )
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     user_timezone = user.get("timezone", DEFAULT_TIMEZONE)
     
     # Get pending assignments for the user
-    assignments = await db.assignments.find({
+    assignments_cursor = db.assignments.find({
         "user_id": share_data["user_id"],
         "status": {"$ne": "completed"},
         "due_date": {"$gt": datetime.now(timezone.utc)}
-    }).sort("due_date", 1).to_list(100)
+    }).sort("due_date", 1).limit(100)
     
     # Get user's subjects to include subject names
-    subjects = await db.subjects.find({
+    subjects_cursor = db.subjects.find({
         "user_id": share_data["user_id"]
-    }).to_list(100)
+    }, {"name": 1})
+    
+    # Run these queries in parallel
+    assignments, subjects = await asyncio.gather(
+        assignments_cursor.to_list(100),
+        subjects_cursor.to_list(100)
+    )
     
     subject_map = {str(subject["_id"]): subject["name"] for subject in subjects}
     
@@ -1075,6 +1346,20 @@ async def get_shared_assignments(request: Request, share_id: str):
         subject_id = str(assignment.get("subject_id", ""))
         assignment["subject_name"] = subject_map.get(subject_id, "Unknown Subject")
         
+        # Add priority color
+        if assignment["priority"] == "high":
+            assignment["priority_color"] = "#ff6b6b"  # red
+        elif assignment["priority"] == "medium":
+            assignment["priority_color"] = "#feca57"  # yellow
+        else:
+            assignment["priority_color"] = "#1dd1a1"  # green
+        
+        # Calculate days until due
+        now = datetime.now(timezone.utc)
+        due_date_utc = convert_to_utc(assignment["due_date"], user_timezone)
+        days_until_due = (due_date_utc - now).days
+        assignment["days_until_due"] = days_until_due
+        
         # Remove sensitive or unnecessary fields
         assignment.pop("user_id", None)
         
@@ -1085,11 +1370,82 @@ async def get_shared_assignments(request: Request, share_id: str):
         "assignments": processed_assignments,
         "total_count": len(processed_assignments)
     }
+
+# Notification endpoints
+@app.get("/notifications", response_model=List[NotificationResponse])
+@limiter.limit("60/minute")
+async def get_notifications(
+    request: Request,
+    unread_only: bool = False,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {"user_id": ObjectId(current_user["_id"])}
+    
+    if unread_only:
+        query["read"] = False
+    
+    notifications = await db.notifications.find(query).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Convert dates to user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    notifications = process_dates_for_output(notifications, user_timezone)
+    
+    return notifications
+
+@app.put("/notifications/{notification_id}", response_model=NotificationResponse)
+@limiter.limit("60/minute")
+async def mark_notification_read(
+    request: Request,
+    notification_id: str,
+    notification_update: NotificationUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Check if notification exists and belongs to user
+        notification = await db.notifications.find_one({
+            "_id": ObjectId(notification_id),
+            "user_id": ObjectId(current_user["_id"])
+        })
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid notification ID")
+    
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    # Update notification
+    update_data = {"read": notification_update.read}
+    
+    await db.notifications.update_one(
+        {"_id": ObjectId(notification_id)},
+        {"$set": update_data}
+    )
+    
+    # Return updated notification
+    updated_notification = await db.notifications.find_one({"_id": ObjectId(notification_id)})
+    
+    # Convert dates to user timezone
+    user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
+    updated_notification = process_dates_for_output(updated_notification, user_timezone)
+    
+    return updated_notification
+
+@app.put("/notifications/mark-all-read", response_model=dict)
+@limiter.limit("20/minute")
+async def mark_all_notifications_read(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    result = await db.notifications.update_many(
+        {"user_id": ObjectId(current_user["_id"]), "read": False},
+        {"$set": {"read": True}}
+    )
+    
+    return {"message": f"Marked {result.modified_count} notifications as read"}
+
 @app.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: dict = Depends(get_current_user)):
-    user_data = {**current_user}
-    user_data.pop("password", None)
-    return user_data
+    return current_user
 
 @app.put("/users/me", response_model=UserResponse)
 async def update_user(
@@ -1105,7 +1461,7 @@ async def update_user(
     
     # Check if email is being updated and is not already taken
     if "email" in update_data and update_data["email"] != current_user["email"]:
-        existing_user = await db.users.find_one({"email": update_data["email"]})
+        existing_user = await db.users.find_one({"email": update_data["email"]}, {"_id": 1})
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already taken")
     
@@ -1117,10 +1473,10 @@ async def update_user(
     
     # Return updated user
     updated_user = await db.users.find_one({"_id": ObjectId(current_user["_id"])})
-    updated_user.pop("password")
     return updated_user
 
 @app.get("/timezones")
+@cache(expire=3600)  # Cache for 1 hour
 async def get_timezones():
     """Return a list of valid timezones"""
     return {"timezones": VALID_TIMEZONES}
@@ -1142,6 +1498,7 @@ async def create_subject(request: Request, subject: SubjectCreate, current_user:
 
 @app.get("/subjects", response_model=List[SubjectResponse])
 @limiter.limit("60/minute")
+@cache(expire=30)  # Cache for 30 seconds
 async def get_subjects(
     request: Request,
     skip: int = 0, 
@@ -1187,7 +1544,7 @@ async def update_subject(
         subject = await db.subjects.find_one({
             "_id": ObjectId(subject_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
@@ -1219,7 +1576,7 @@ async def delete_subject(
         subject = await db.subjects.find_one({
             "_id": ObjectId(subject_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid subject ID format")
     
@@ -1229,35 +1586,36 @@ async def delete_subject(
     # Delete subject
     await db.subjects.delete_one({"_id": ObjectId(subject_id)})
     
-    # Update related records to remove this subject
-    await db.assignments.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
-    )
-    
-    await db.events.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
-    )
-    
-    await db.study_sessions.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
-    )
-    
-    await db.materials.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
-    )
-    
-    await db.goals.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
-    )
-    
-    await db.notes.update_many(
-        {"subject_id": ObjectId(subject_id)},
-        {"$set": {"subject_id": None}}
+    # Update related records to remove this subject - run in parallel
+    await asyncio.gather(
+        db.assignments.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.events.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.study_sessions.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.materials.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.goals.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.goals.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        ),
+        db.notes.update_many(
+            {"subject_id": ObjectId(subject_id)},
+            {"$set": {"subject_id": None}}
+        )
     )
     
     return None
@@ -1275,7 +1633,7 @@ async def create_assignment(
         subject = await db.subjects.find_one({
             "_id": ObjectId(assignment.subject_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
         if not subject:
             raise HTTPException(status_code=404, detail="Subject not found")
     except InvalidId:
@@ -1289,7 +1647,8 @@ async def create_assignment(
     new_assignment = {
         **assignment_dict,
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(timezone.utc),
+        "notified": False  # Track notification status
     }
     
     result = await db.assignments.insert_one(new_assignment)
@@ -1303,6 +1662,7 @@ async def create_assignment(
 @app.get("/assignments", response_model=List[AssignmentResponse])
 @limiter.limit("60/minute")
 async def get_assignments(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -1347,6 +1707,14 @@ async def get_assignments(
     
     if date_query:
         query["due_date"] = date_query
+    
+    # Get total count for pagination
+    total_count = await db.assignments.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get assignments with filters
     assignments = await db.assignments.find(query).sort("due_date", 1).skip(skip).limit(limit).to_list(limit)
@@ -1407,7 +1775,7 @@ async def update_assignment(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -1417,6 +1785,10 @@ async def update_assignment(
     user_timezone = current_user.get("timezone", DEFAULT_TIMEZONE)
     if "due_date" in update_data:
         update_data["due_date"] = convert_to_utc(update_data["due_date"], user_timezone)
+    
+    # If status is changing to completed, reset notification flag
+    if "status" in update_data and update_data["status"] == "completed":
+        update_data["notified"] = False
     
     # Update assignment
     if update_data:
@@ -1446,7 +1818,7 @@ async def delete_assignment(
         assignment = await db.assignments.find_one({
             "_id": ObjectId(assignment_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid assignment ID format")
     
@@ -1471,7 +1843,7 @@ async def create_event(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(event.subject_id),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -1486,7 +1858,8 @@ async def create_event(
     new_event = {
         **event_dict,
         "user_id": ObjectId(current_user["_id"]),
-        "created_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(timezone.utc),
+        "notified": False  # Track notification status
     }
     
     result = await db.events.insert_one(new_event)
@@ -1500,6 +1873,7 @@ async def create_event(
 @app.get("/events", response_model=List[EventResponse])
 @limiter.limit("60/minute")
 async def get_events(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -1538,6 +1912,14 @@ async def get_events(
     
     if date_query:
         query["start_time"] = date_query
+    
+    # Get total count for pagination
+    total_count = await db.events.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get events with filters
     events = await db.events.find(query).sort("start_time", 1).skip(skip).limit(limit).to_list(limit)
@@ -1601,7 +1983,7 @@ async def update_event(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -1610,6 +1992,8 @@ async def update_event(
     # Convert datetime fields from user timezone to UTC
     if "start_time" in update_data:
         update_data["start_time"] = convert_to_utc(update_data["start_time"], user_timezone)
+        # Reset notification flag if start time changes
+        update_data["notified"] = False
     if "end_time" in update_data:
         update_data["end_time"] = convert_to_utc(update_data["end_time"], user_timezone)
     
@@ -1656,7 +2040,7 @@ async def delete_event(
         event = await db.events.find_one({
             "_id": ObjectId(event_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid event ID format")
     
@@ -1680,7 +2064,7 @@ async def create_study_session(
         subject = await db.subjects.find_one({
             "_id": ObjectId(study_session.subject_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
         if not subject:
             raise HTTPException(status_code=404, detail="Subject not found")
     except InvalidId:
@@ -1697,6 +2081,7 @@ async def create_study_session(
         "completed": False,
         "actual_duration": None,
         "completed_at": None,
+        "notified": False,  # Track notification status
         "created_at": datetime.now(timezone.utc)
     }
     
@@ -1711,6 +2096,7 @@ async def create_study_session(
 @app.get("/study-sessions", response_model=List[StudySessionResponse])
 @limiter.limit("60/minute")
 async def get_study_sessions(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -1747,6 +2133,14 @@ async def get_study_sessions(
     
     if date_query:
         query["scheduled_date"] = date_query
+    
+    # Get total count for pagination
+    total_count = await db.study_sessions.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get study sessions with filters
     study_sessions = await db.study_sessions.find(query).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
@@ -1810,7 +2204,7 @@ async def update_study_session(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -1819,6 +2213,8 @@ async def update_study_session(
     # Convert datetime fields from user timezone to UTC
     if "scheduled_date" in update_data:
         update_data["scheduled_date"] = convert_to_utc(update_data["scheduled_date"], user_timezone)
+        # Reset notification flag if date changes
+        update_data["notified"] = False
     if "completed_at" in update_data and update_data["completed_at"]:
         update_data["completed_at"] = convert_to_utc(update_data["completed_at"], user_timezone)
     
@@ -1856,7 +2252,7 @@ async def delete_study_session(
         study_session = await db.study_sessions.find_one({
             "_id": ObjectId(session_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid study session ID format")
     
@@ -1882,7 +2278,7 @@ async def upload_material(
         subject = await db.subjects.find_one({
             "_id": ObjectId(subject_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
         if not subject:
             raise HTTPException(status_code=404, detail="Subject not found")
     except InvalidId:
@@ -1974,7 +2370,10 @@ async def download_material(
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             user_id = payload.get("user_id")
             if user_id:
-                current_user = await db.users.find_one({"_id": ObjectId(user_id)})
+                current_user = await db.users.find_one(
+                    {"_id": ObjectId(user_id)},
+                    {"_id": 1}
+                )
         except:
             pass
     
@@ -2043,6 +2442,7 @@ async def download_material(
 @app.get("/materials", response_model=List[MaterialResponse])
 @limiter.limit("60/minute")
 async def get_materials(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -2063,6 +2463,14 @@ async def get_materials(
         if file_type not in ["document", "image", "spreadsheet", "pdf"]:
             raise HTTPException(status_code=400, detail="Invalid file type")
         query["file_type"] = file_type
+    
+    # Get total count for pagination
+    total_count = await db.materials.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get materials with filters
     materials = await db.materials.find(query).sort("uploaded_at", -1).skip(skip).limit(limit).to_list(limit)
@@ -2124,7 +2532,7 @@ async def update_material(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -2192,7 +2600,7 @@ async def create_goal(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(goal.subject_id),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -2237,6 +2645,7 @@ async def create_goal(
 @app.get("/goals", response_model=List[GoalResponse])
 @limiter.limit("60/minute")
 async def get_goals(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -2255,6 +2664,14 @@ async def get_goals(
     
     if completed is not None:
         query["completed"] = completed
+    
+    # Get total count for pagination
+    total_count = await db.goals.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get goals with filters
     goals = await db.goals.find(query).sort("target_date", 1).skip(skip).limit(limit).to_list(limit)
@@ -2319,7 +2736,7 @@ async def update_goal(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -2342,6 +2759,19 @@ async def update_goal(
         # Mark as completed now if not already completed
         if "completed_at" not in update_data or update_data["completed_at"] is None:
             update_data["completed_at"] = datetime.now(timezone.utc)
+        
+        # Create a notification for goal completion
+        notification = {
+            "user_id": ObjectId(current_user["_id"]),
+            "type": "goal_completed",
+            "title": "Goal Completed",
+            "message": f"Congratulations! You've completed your goal: {goal['title']}",
+            "related_id": str(goal_id),
+            "read": False,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        await db.notifications.insert_one(notification)
     
     # Update goal
     if update_data:
@@ -2371,7 +2801,7 @@ async def delete_goal(
         goal = await db.goals.find_one({
             "_id": ObjectId(goal_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid goal ID format")
     
@@ -2396,7 +2826,7 @@ async def create_note(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(note.subject_id),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -2420,6 +2850,7 @@ async def create_note(
 @app.get("/notes", response_model=List[NoteResponse])
 @limiter.limit("60/minute")
 async def get_notes(
+    response: Response,
     request: Request,
     skip: int = 0,
     limit: int = 100,
@@ -2441,11 +2872,23 @@ async def get_notes(
         query["tags"] = tag
     
     if search:
-        search_query = {"$regex": search, "$options": "i"}
-        query["$or"] = [
-            {"title": search_query},
-            {"content": search_query}
-        ]
+        # Use text search if we have a text index, otherwise use regex
+        try:
+            query["$text"] = {"$search": search}
+        except:
+            search_query = {"$regex": search, "$options": "i"}
+            query["$or"] = [
+                {"title": search_query},
+                {"content": search_query}
+            ]
+    
+    # Get total count for pagination
+    total_count = await db.notes.count_documents(query)
+    
+    # Add pagination headers
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(skip // limit + 1)
+    response.headers["X-Total-Pages"] = str(math.ceil(total_count / limit))
     
     # Get notes with filters
     notes = await db.notes.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
@@ -2507,7 +2950,7 @@ async def update_note(
             subject = await db.subjects.find_one({
                 "_id": ObjectId(update_data["subject_id"]),
                 "user_id": ObjectId(current_user["_id"])
-            })
+            }, {"_id": 1})
             if not subject:
                 raise HTTPException(status_code=404, detail="Subject not found")
         except InvalidId:
@@ -2542,7 +2985,7 @@ async def delete_note(
         note = await db.notes.find_one({
             "_id": ObjectId(note_id),
             "user_id": ObjectId(current_user["_id"])
-        })
+        }, {"_id": 1})
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid note ID format")
     
@@ -2556,6 +2999,7 @@ async def delete_note(
 # Statistics endpoints
 @app.get("/statistics", response_model=StatisticsResponse)
 @limiter.limit("60/minute")
+@cache(expire=60)  # Cache for 60 seconds
 async def get_statistics(
     request: Request,
     start_date: Optional[datetime] = None,
@@ -2578,39 +3022,39 @@ async def get_statistics(
     
     user_id = ObjectId(current_user["_id"])
     
-    # Assignment statistics
-    total_assignments = await db.assignments.count_documents({
-        "user_id": user_id,
-        "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
-    })
-    
-    completed_assignments = await db.assignments.count_documents({
-        "user_id": user_id,
-        "status": "completed",
-        "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
-    })
+    # Run these queries in parallel for better performance
+    total_assignments, completed_assignments, upcoming_events, study_sessions = await asyncio.gather(
+        db.assignments.count_documents({
+            "user_id": user_id,
+            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+        }),
+        db.assignments.count_documents({
+            "user_id": user_id,
+            "status": "completed",
+            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+        }),
+        db.events.count_documents({
+            "user_id": user_id,
+            "start_time": {"$gte": now}
+        }),
+        db.study_sessions.find({
+            "user_id": user_id,
+            "completed": True,
+            "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+        }).to_list(1000)
+    )
     
     pending_assignments = total_assignments - completed_assignments
     
-    # Upcoming events
-    upcoming_events = await db.events.count_documents({
-        "user_id": user_id,
-        "start_time": {"$gte": now}
-    })
-    
-    # Study hours
-    study_sessions = await db.study_sessions.find({
-        "user_id": user_id,
-        "completed": True,
-        "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
-    }).to_list(1000)
-    
+    # Calculate study hours
     study_hours = sum(session.get("actual_duration", 0) for session in study_sessions) / 60.0
     
     # Daily study data for last 7 days
     daily_study_data = []
     today_utc = now
     
+    # Prepare date queries for the last 7 days
+    day_queries = []
     for i in range(7):
         day_date = today_utc - timedelta(days=6-i)
         # Convert to user timezone for day boundaries
@@ -2622,70 +3066,95 @@ async def get_statistics(
         day_start_utc = convert_to_utc(day_start_user_tz, user_timezone)
         day_end_utc = convert_to_utc(day_end_user_tz, user_timezone)
         
-        day_sessions = await db.study_sessions.find({
-            "user_id": user_id,
-            "completed": True,
-            "completed_at": {"$gte": day_start_utc, "$lte": day_end_utc}
-        }).to_list(100)
-        
-        day_minutes = sum(session.get("actual_duration", 0) for session in day_sessions)
-        
-        daily_study_data.append({
+        day_queries.append({
             "date": day_date_user_tz.strftime("%a"),
+            "query": {
+                "user_id": user_id,
+                "completed": True,
+                "completed_at": {"$gte": day_start_utc, "$lte": day_end_utc}
+            }
+        })
+    
+    # Run day queries in parallel
+    day_results = await asyncio.gather(*[
+        db.study_sessions.find(day_query["query"]).to_list(100) 
+        for day_query in day_queries
+    ])
+    
+    # Process day results
+    for i, sessions in enumerate(day_results):
+        day_minutes = sum(session.get("actual_duration", 0) for session in sessions)
+        daily_study_data.append({
+            "date": day_queries[i]["date"],
             "hours": day_minutes / 60.0
         })
     
     # Average session duration
+    avg_session_duration = 0
     if study_sessions:
         avg_session_duration = sum(session.get("actual_duration", 0) for session in study_sessions) / len(study_sessions)
-    else:
-        avg_session_duration = 0
     
     # Subject statistics
     subjects = await db.subjects.find({"user_id": user_id}).to_list(100)
     subject_stats = []
     
+    # Prepare subject queries
+    subject_queries = []
     for subject in subjects:
         subject_id = subject["_id"]
-        
-        # Assignments for this subject
-        subject_assignments = await db.assignments.count_documents({
-            "user_id": user_id,
-            "subject_id": subject_id,
-            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+        subject_queries.append({
+            "subject": subject,
+            "assignment_count_query": {
+                "user_id": user_id,
+                "subject_id": subject_id,
+                "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+            },
+            "completed_assignment_query": {
+                "user_id": user_id,
+                "subject_id": subject_id,
+                "status": "completed",
+                "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+            },
+            "session_query": {
+                "user_id": user_id,
+                "subject_id": subject_id,
+                "completed": True,
+                "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
+            }
         })
+    
+    # Run subject queries in parallel in batches to avoid overwhelming the DB
+    for i in range(0, len(subject_queries), 5):  # Process 5 subjects at a time
+        batch = subject_queries[i:i+5]
+        batch_results = await asyncio.gather(*[
+            asyncio.gather(
+                db.assignments.count_documents(q["assignment_count_query"]),
+                db.assignments.count_documents(q["completed_assignment_query"]),
+                db.study_sessions.find(q["session_query"]).to_list(1000)
+            ) for q in batch
+        ])
         
-        completed_subject_assignments = await db.assignments.count_documents({
-            "user_id": user_id,
-            "subject_id": subject_id,
-            "status": "completed",
-            "created_at": {"$gte": start_date_utc, "$lte": end_date_utc}
-        })
-        
-        # Study time for this subject
-        subject_sessions = await db.study_sessions.find({
-            "user_id": user_id,
-            "subject_id": subject_id,
-            "completed": True,
-            "completed_at": {"$gte": start_date_utc, "$lte": end_date_utc}
-        }).to_list(1000)
-        
-        subject_study_hours = sum(session.get("actual_duration", 0) for session in subject_sessions) / 60.0
-        
-        # Completion percentage
-        completion_percentage = 0
-        if subject_assignments > 0:
-            completion_percentage = (completed_subject_assignments / subject_assignments) * 100
-        
-        subject_stats.append({
-            "subject_id": str(subject_id),
-            "subject_name": subject["name"],
-            "color": subject["color"],
-            "total_assignments": subject_assignments,
-            "completed_assignments": completed_subject_assignments,
-            "study_hours": subject_study_hours,
-            "completion_percentage": completion_percentage
-        })
+        for j, (subject_assignments, completed_subject_assignments, subject_sessions) in enumerate(batch_results):
+            subject = batch[j]["subject"]
+            subject_id = subject["_id"]
+            
+            # Calculate study time for this subject
+            subject_study_hours = sum(session.get("actual_duration", 0) for session in subject_sessions) / 60.0
+            
+            # Completion percentage
+            completion_percentage = 0
+            if subject_assignments > 0:
+                completion_percentage = (completed_subject_assignments / subject_assignments) * 100
+            
+            subject_stats.append({
+                "subject_id": str(subject_id),
+                "subject_name": subject["name"],
+                "color": subject["color"],
+                "total_assignments": subject_assignments,
+                "completed_assignments": completed_subject_assignments,
+                "study_hours": subject_study_hours,
+                "completion_percentage": completion_percentage
+            })
     
     # Goal statistics
     goals = await db.goals.find({
@@ -2712,6 +3181,7 @@ async def get_statistics(
             "completion_rate": goal_completion_rate
         }
     }
+
 @app.post("/export/pdf")
 @limiter.limit("5/minute")
 async def export_pdf(
@@ -2727,7 +3197,7 @@ async def export_pdf(
             raise HTTPException(status_code=401, detail="Invalid token")
         
         # Get user
-        user = await db.users.find_one({"_id": ObjectId(user_id)})
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"name": 1, "email": 1})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         
@@ -2891,4 +3361,10 @@ async def health_check():
 # Run the application
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run(
+        "main:app", 
+        host="0.0.0.0", 
+        port=port, 
+        workers=4,  # Adjust based on CPU cores
+        loop="uvloop"  # Faster event loop implementation
+    )
