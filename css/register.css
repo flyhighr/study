@@ -1,0 +1,16 @@
+/* register.css - Styles for the registration page */
+
+/* Most styles are inherited from login.css */
+
+/* Specific styles for register page */
+.password-requirements {
+    margin-top: var(--spacing-sm);
+}
+
+.password-requirements ul li {
+    transition: color var(--transition-fast);
+}
+
+.password-requirements ul li.met {
+    color: var(--success-color);
+}
