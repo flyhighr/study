@@ -1,4 +1,4 @@
-/* study-sessions.css - Styles for the study sessions page */
+/* study-sessions.css - Enhanced mobile-responsive styles */
 
 .filter-container {
     display: flex;
@@ -569,30 +569,109 @@ input:checked + .slider:before {
     margin: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
 }
 
+/* Enhanced Mobile Responsive Styles */
+@media (max-width: 1024px) {
+    .stat-card {
+        padding: var(--spacing-md);
+    }
+    
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+    
+    .stat-content p {
+        font-size: var(--font-size-lg);
+    }
+    
+    .sessions-container h2 {
+        font-size: var(--font-size-lg);
+    }
+}
+
 @media (max-width: 768px) {
     .filter-container {
         flex-direction: column;
         align-items: flex-start;
+        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
     }
     
     .filter-group {
         width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
     }
     
     .filter-select {
-        flex: 1;
+        width: 100%;
+    }
+    
+    .header-actions {
+        flex-wrap: wrap;
+    }
+    
+    .search-bar {
+        width: 100%;
+        margin-bottom: var(--spacing-sm);
     }
     
     .session-stats {
         grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
     }
     
     .timer-display {
         font-size: 48px;
     }
+    
+    .timer-controls {
+        gap: var(--spacing-sm);
+    }
+    
+    .timer-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+    
+    .timer-info {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: var(--spacing-md);
+    }
+    
+    .timer-info-item {
+        width: 45%;
+    }
+    
+    .session-content {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    .session-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    .session-actions-footer {
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+    }
+    
+    .session-actions-footer .btn {
+        flex: 1;
+        text-align: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 576px) {
+    .content-header h1 {
+        font-size: var(--font-size-xl);
+    }
+    
     .session-stats {
         grid-template-columns: 1fr;
     }
@@ -609,8 +688,276 @@ input:checked + .slider:before {
         margin-top: var(--spacing-sm);
     }
     
+    .session-status {
+        margin-top: var(--spacing-xs);
+    }
+    
     .timer-options {
         flex-direction: column;
         gap: var(--spacing-sm);
+    }
+    
+    .timer-display {
+        font-size: 40px;
+    }
+    
+    .timer-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 18px;
+    }
+    
+    .timer-header h2 {
+        font-size: var(--font-size-md);
+    }
+    
+    .timer-info-item {
+        width: 100%;
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .timer-info {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .close-timer {
+        width: 28px;
+        height: 28px;
+    }
+    
+    /* Improve form elements in modals */
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .form-group {
+        width: 100%;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+    
+    .form-actions button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .session-item {
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .session-item::before {
+        width: 100%;
+        height: 5px;
+        top: 0;
+        left: 0;
+    }
+    
+    .session-time, .session-duration, .session-pomodoro, .session-completed-at {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+        margin-bottom: var(--spacing-md);
+    }
+    
+    .session-time i, .session-duration i, .session-pomodoro i, .session-completed-at i {
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .session-description {
+        font-size: var(--font-size-sm);
+    }
+    
+    .timer-container {
+        width: 95%;
+    }
+    
+    .timer-display {
+        font-size: 36px;
+    }
+    
+    .timer-status {
+        font-size: var(--font-size-md);
+    }
+    
+    .timer-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+    
+    /* Adjust action buttons for better mobile touch */
+    .session-actions button, 
+    .session-actions-footer button {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+    }
+    
+    .session-actions button i,
+    .session-actions-footer button i {
+        margin-right: 0;
+    }
+    
+    .session-actions button span,
+    .session-actions-footer button span {
+        display: none;
+    }
+}
+
+/* Fix for mobile sidebar */
+@media (max-width: 768px) {
+    .app-container {
+        position: relative;
+    }
+    
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        width: 80%;
+        max-width: 300px;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.active {
+        left: 0;
+    }
+    
+    .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+/* Fix for overflowing content */
+.session-description {
+    word-break: break-word;
+}
+
+/* Improve accessibility for interactive elements */
+.filter-select,
+.session-actions button,
+.timer-btn {
+    min-height: 40px;
+}
+
+/* Ensure the main content doesn't overflow */
+.main-content {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Better touch targets for mobile */
+@media (max-width: 768px) {
+    .session-actions button,
+    .session-actions-footer button,
+    .timer-btn,
+    .filter-select {
+        min-height: 44px; /* Apple's recommended minimum */
+    }
+    
+    /* Improve timer controls for touch */
+    .timer-controls {
+        padding: var(--spacing-lg) var(--spacing-lg);
+    }
+    
+    /* Better spacing for form elements */
+    .timer-option input,
+    .filter-select {
+        padding: var(--spacing-md);
+        font-size: 16px; /* Prevents iOS zoom */
+    }
+}
+
+/* Fix for timer overlay on iOS */
+@media (max-width: 768px) {
+    .timer-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Better scrolling in timer container */
+    .timer-container {
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+}
+
+/* Optimize for different device orientations */
+@media (max-height: 500px) and (orientation: landscape) {
+    .timer-display {
+        font-size: 32px;
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .timer-clock {
+        padding: var(--spacing-md) var(--spacing-lg);
+    }
+    
+    .timer-controls {
+        padding: var(--spacing-sm) var(--spacing-lg);
+    }
+    
+    .timer-container {
+        max-height: 95vh;
+        overflow-y: auto;
+    }
+}
+
+/* Better loading state */
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: var(--spacing-xl) 0;
+}
+
+.loading-spinner i {
+    font-size: 30px;
+    color: var(--primary-color);
+}
+
+/* Empty state improvements */
+.empty-state {
+    padding: var(--spacing-xl) var(--spacing-md);
+    text-align: center;
+}
+
+.empty-state i {
+    font-size: 40px;
+    margin-bottom: var(--spacing-md);
+    color: var(--border-color);
+}
+
+.empty-state h3 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--spacing-sm);
+    color: var(--primary-dark);
+}
+
+.empty-state p {
+    color: var(--text-light);
+    margin-bottom: var(--spacing-md);
+}
+
+@media (max-width: 576px) {
+    .empty-state i {
+        font-size: 30px;
+    }
+    
+    .empty-state h3 {
+        font-size: var(--font-size-md);
+    }
+    
+    .empty-state .btn {
+        width: 100%;
     }
 }

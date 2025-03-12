@@ -1,4 +1,4 @@
-/* events.css - Styles for the events page */
+/* events.css - Enhanced mobile-responsive styles for the events page */
 
 .calendar-view-toggle {
     display: flex;
@@ -267,44 +267,6 @@
     box-shadow: var(--shadow-md);
 }
 
-@media (max-width: 768px) {
-    .filter-container {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .filter-group {
-        width: 100%;
-    }
-    
-    .filter-select {
-        flex: 1;
-    }
-    
-    .event-item {
-        flex-direction: column;
-    }
-    
-    .event-time {
-        min-width: auto;
-        padding-right: 0;
-        border-right: none;
-        padding-bottom: var(--spacing-sm);
-        margin-bottom: var(--spacing-sm);
-        border-bottom: 1px solid var(--border-color);
-        flex-direction: row;
-        align-items: center;
-    }
-    
-    .event-content {
-        padding-left: 0;
-    }
-    
-    #calendar {
-        height: 500px;
-    }
-}
-
 .event-tooltip {
     background-color: white;
     border: 1px solid var(--border-color);
@@ -314,4 +276,543 @@
     max-width: 300px;
     font-size: var(--font-size-sm);
     line-height: 1.5;
+}
+
+/* Enhanced Mobile Responsive Styles */
+@media (max-width: 1024px) {
+    #calendar {
+        height: 550px;
+    }
+    
+    .calendar-container {
+        padding: var(--spacing-md);
+    }
+    
+    /* Make FullCalendar more responsive on tablets */
+    .fc .fc-toolbar {
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+    }
+    
+    .fc .fc-toolbar-title {
+        font-size: 1.2em;
+    }
+}
+
+@media (max-width: 768px) {
+    .content-header h1 {
+        font-size: var(--font-size-xl);
+    }
+    
+    .header-actions {
+        flex-wrap: wrap;
+    }
+    
+    .search-bar {
+        width: 100%;
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .calendar-view-toggle {
+        width: 100%;
+    }
+    
+    .view-toggle-btn {
+        flex: 1;
+        justify-content: center;
+    }
+    
+    .filter-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+    }
+    
+    .filter-group {
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .filter-select {
+        width: 100%;
+    }
+    
+    .calendar-container {
+        padding: var(--spacing-sm);
+    }
+    
+    #calendar {
+        height: 450px;
+    }
+    
+    /* FullCalendar mobile improvements */
+    .fc .fc-toolbar {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+    
+    .fc .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .fc .fc-toolbar-title {
+        font-size: 1.1em;
+        text-align: center;
+    }
+    
+    .fc .fc-button {
+        padding: 0.3em 0.5em;
+    }
+    
+    .fc .fc-button-group {
+        display: flex;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-daygrid-day-number {
+        font-size: 0.9em;
+    }
+    
+    /* Event item adjustments */
+    .event-item {
+        flex-direction: column;
+        padding: var(--spacing-md);
+    }
+    
+    .event-time {
+        min-width: auto;
+        width: 100%;
+        padding-right: 0;
+        border-right: none;
+        padding-bottom: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+        border-bottom: 1px solid var(--border-color);
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: var(--spacing-xs);
+    }
+    
+    .event-content {
+        padding-left: 0;
+        width: 100%;
+    }
+    
+    .event-header {
+        flex-direction: column;
+    }
+    
+    .event-header h4 {
+        font-size: var(--font-size-md);
+        margin-bottom: var(--spacing-sm);
+        width: 100%;
+    }
+    
+    .event-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .event-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+    }
+    
+    .date-header h3 {
+        font-size: var(--font-size-md);
+    }
+    
+    /* Modal improvements */
+    .modal-content {
+        width: 95%;
+        max-width: 95%;
+        margin: 20px auto;
+    }
+    
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .form-group {
+        width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    #calendar {
+        height: 400px;
+    }
+    
+    /* Further simplify FullCalendar on small screens */
+    .fc .fc-toolbar-title {
+        font-size: 1em;
+    }
+    
+    .fc .fc-button {
+        padding: 0.2em 0.4em;
+        font-size: 0.85em;
+    }
+    
+    .fc .fc-col-header-cell-cushion {
+        padding: 5px;
+    }
+    
+    .fc .fc-daygrid-day-number {
+        padding: 3px;
+    }
+    
+    .fc-direction-ltr .fc-daygrid-event.fc-event-end {
+        margin-right: 2px;
+    }
+    
+    .fc-direction-ltr .fc-daygrid-event.fc-event-start {
+        margin-left: 2px;
+    }
+    
+    .event-item {
+        padding: var(--spacing-sm);
+    }
+    
+    .event-item::before {
+        width: 100%;
+        height: 5px;
+        top: 0;
+        left: 0;
+    }
+    
+    .event-description {
+        font-size: var(--font-size-sm);
+    }
+    
+    .event-type {
+        padding: 2px 6px;
+    }
+    
+    /* Form improvements */
+    .form-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+    
+    .form-actions button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    #calendar {
+        height: 350px;
+    }
+    
+    /* Simplify to day/week view on very small screens */
+    .fc-dayGridMonth-button {
+        display: none !important;
+    }
+    
+    .fc .fc-toolbar-title {
+        font-size: 0.9em;
+    }
+    
+    .date-header h3 {
+        font-size: var(--font-size-base);
+    }
+    
+    .event-header h4 {
+        font-size: var(--font-size-base);
+    }
+}
+
+/* Fix for overflowing content */
+.event-description {
+    word-break: break-word;
+}
+
+/* Improve accessibility for interactive elements */
+.view-toggle-btn,
+.filter-select,
+.event-actions button {
+    min-height: 40px;
+}
+
+/* Ensure the main content doesn't overflow */
+.main-content {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Fix for mobile sidebar */
+@media (max-width: 768px) {
+    .app-container {
+        position: relative;
+    }
+    
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        width: 80%;
+        max-width: 300px;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.active {
+        left: 0;
+    }
+    
+    .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+/* Improve touch targets for mobile */
+@media (max-width: 768px) {
+    .view-toggle-btn,
+    .filter-select,
+    .event-actions button {
+        padding: var(--spacing-md);
+    }
+    
+    .fc-event {
+        padding: 4px;
+    }
+    
+    .fc-daygrid-day-events {
+        min-height: 2em;
+    }
+    
+    /* Additional FullCalendar optimizations for mobile */
+    .fc-daygrid-day-events {
+        min-height: 2em;
+    }
+    
+    .fc-event-time, .fc-event-title {
+        padding: 1px 2px;
+        font-size: 0.8em;
+    }
+    
+    .fc-daygrid-event-dot {
+        margin: 0 2px;
+    }
+    
+    /* Improve calendar navigation on mobile */
+    .fc-header-toolbar {
+        margin-bottom: 0.5em !important;
+    }
+    
+    .fc-view-harness {
+        min-height: 300px !important;
+    }
+    
+    /* Make sure events with long titles don't break layout */
+    .fc-event-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    /* Better scrolling for calendar on mobile */
+    .fc-scroller {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Adjust tooltip for mobile */
+    .event-tooltip {
+        max-width: 250px;
+        padding: var(--spacing-sm);
+        font-size: var(--font-size-xs);
+    }
+    
+    /* Fix for event time display on mobile */
+    @media (max-width: 576px) {
+        .event-time {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: var(--spacing-xs);
+        }
+        
+        .event-time .start-time,
+        .event-time .end-time {
+            font-size: var(--font-size-sm);
+        }
+        
+        .time-separator {
+            margin: 0 2px;
+        }
+    }
+    
+    /* Improve mobile date headers */
+    @media (max-width: 576px) {
+        .date-header {
+            margin: var(--spacing-md) 0 var(--spacing-xs);
+        }
+        
+        .date-header h3 {
+            gap: var(--spacing-xs);
+        }
+    }
+    
+    /* Better empty state for mobile */
+    @media (max-width: 576px) {
+        .empty-state i {
+            font-size: 30px;
+        }
+        
+        .empty-state h3 {
+            font-size: var(--font-size-md);
+        }
+        
+        .empty-state p {
+            font-size: var(--font-size-sm);
+        }
+        
+        .empty-state .btn {
+            width: 100%;
+            margin-top: var(--spacing-md);
+        }
+    }
+    
+    /* Adjust calendar for landscape orientation on mobile */
+    @media (max-height: 500px) and (orientation: landscape) {
+        #calendar {
+            height: 300px;
+        }
+        
+        .fc .fc-toolbar {
+            flex-direction: row;
+        }
+        
+        .fc .fc-toolbar-chunk {
+            width: auto;
+            margin-bottom: 0;
+        }
+    }
+    
+    /* Optimize modals for landscape mode */
+    @media (max-height: 500px) and (orientation: landscape) {
+        .modal-content {
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+    }
+    
+    /* Better loading spinner for mobile */
+    @media (max-width: 576px) {
+        .loading-spinner {
+            padding: var(--spacing-lg) 0;
+        }
+        
+        .loading-spinner i {
+            font-size: 24px;
+        }
+    }
+    
+    /* Adjust form inputs for better mobile experience */
+    @media (max-width: 576px) {
+        input[type="datetime-local"] {
+            font-size: var(--font-size-sm);
+        }
+        
+        select, input, textarea {
+            font-size: 16px !important; /* Prevents iOS zoom on focus */
+        }
+    }
+    
+    /* Fix for event buttons on mobile */
+    @media (max-width: 576px) {
+        .event-actions button {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .event-actions button span {
+            display: none;
+        }
+        
+        .event-actions button i {
+            margin: 0;
+        }
+    }
+    
+    /* Make sure event items are touchable */
+    @media (max-width: 576px) {
+        .event-item {
+            margin-bottom: var(--spacing-sm);
+            touch-action: manipulation;
+        }
+        
+        .event-item:active {
+            transform: translateY(-2px);
+        }
+    }
+    
+    /* Fix calendar button spacing */
+    @media (max-width: 576px) {
+        .fc .fc-button {
+            margin: 0 1px;
+        }
+    }
+    
+    /* Prevent overflow issues with calendar */
+    .fc-view {
+        width: 100%;
+        overflow: hidden;
+    }
+    
+    /* Improve event rendering on mobile */
+    @media (max-width: 576px) {
+        .fc-daygrid-dot-event .fc-event-title {
+            flex-grow: 0;
+        }
+        
+        .fc-daygrid-event {
+            white-space: normal;
+        }
+    }
+    
+    /* Fix for calendar header responsiveness */
+    @media (max-width: 480px) {
+        .fc-toolbar-chunk:first-child {
+            order: 2;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: var(--spacing-xs);
+        }
+        
+        .fc-toolbar-chunk:nth-child(2) {
+            order: 1;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .fc-toolbar-chunk:last-child {
+            order: 3;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: var(--spacing-xs);
+        }
+    }
 }

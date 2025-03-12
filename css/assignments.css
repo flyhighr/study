@@ -1,4 +1,4 @@
-/* assignments.css - Styles for the assignments page */
+/* assignments.css - Styles for the assignments page with mobile improvements */
 
 .filter-container {
     display: flex;
@@ -98,9 +98,6 @@
     gap: var(--spacing-md);
 }
 
-.assignments-list.view-active {
-    display: flex;
-}
 .assignments-list.view-active {
     display: flex;
 }
@@ -393,24 +390,6 @@
     text-align: center;
 }
 
-@media (max-width: 768px) {
-    .filter-container {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .filter-group {
-        width: 100%;
-    }
-    
-    .filter-select {
-        flex: 1;
-    }
-    
-    .assignments-grid.view-active {
-        grid-template-columns: 1fr;
-    }
-}
 /* Share button styles */
 .header-actions {
     display: flex;
@@ -453,20 +432,68 @@
     margin-top: var(--spacing-xs);
 }
 
-/* Responsive styles for share functionality */
+/* Enhanced Mobile Responsive Styles */
+@media (max-width: 1024px) {
+    .assignments-grid.view-active {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
 @media (max-width: 768px) {
+    .filter-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+    }
+    
+    .filter-group {
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .filter-select {
+        width: 100%;
+    }
+    
     .header-actions {
         flex-wrap: wrap;
+        justify-content: space-between;
     }
     
     .search-bar {
         width: 100%;
+        order: -1;
         margin-bottom: var(--spacing-sm);
     }
     
     #share-assignments-btn,
     #add-assignment-btn {
         flex: 1;
+        max-width: calc(50% - var(--spacing-xs));
+        padding-left: 0;
+        padding-right: 0;
+        justify-content: center;
+    }
+    
+    .assignments-count {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .assignments-view-toggle {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .view-toggle-btn {
+        flex: 1;
+        justify-content: center;
+    }
+    
+    .assignments-grid.view-active {
+        grid-template-columns: 1fr;
     }
     
     .share-link-container {
@@ -481,5 +508,161 @@
     
     .share-link-container .copy-btn {
         border-radius: var(--border-radius-md);
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        width: 95%;
+        max-width: 95%;
+        margin: 20px auto;
+    }
+}
+
+@media (max-width: 576px) {
+    .content-header h1 {
+        font-size: var(--font-size-xl);
+    }
+    
+    .assignment-item {
+        padding: var(--spacing-md);
+    }
+    
+    .assignment-header {
+        flex-direction: column;
+    }
+    
+    .assignment-header h3 {
+        font-size: var(--font-size-md);
+        margin-right: 0;
+        margin-bottom: var(--spacing-sm);
+        width: 100%;
+    }
+    
+    .assignment-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-bottom: var(--spacing-sm);
+    }
+    
+    .assignment-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+    }
+    
+    .meta-item {
+        width: 100%;
+    }
+    
+    .card-body h3 {
+        font-size: var(--font-size-md);
+    }
+    
+    .card-actions {
+        position: static;
+        margin-top: var(--spacing-sm);
+        justify-content: flex-end;
+    }
+    
+    .status-badge {
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    /* Improve form elements in modals */
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .form-group {
+        width: 100%;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+    
+    .form-actions button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .assignment-item {
+        flex-direction: column;
+    }
+    
+    .assignment-item::before {
+        width: 100%;
+        height: 5px;
+    }
+    
+    .assignment-status {
+        position: absolute;
+        top: var(--spacing-md);
+        right: var(--spacing-md);
+    }
+    
+    .card-description {
+        -webkit-line-clamp: 2;
+    }
+}
+
+/* Fix for overflowing content */
+.assignment-description, 
+.card-description {
+    word-break: break-word;
+}
+
+/* Improve accessibility for interactive elements */
+.view-toggle-btn,
+.filter-select,
+.assignment-actions button {
+    min-height: 40px;
+}
+
+/* Ensure the main content doesn't overflow */
+.main-content {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Fix for mobile sidebar */
+@media (max-width: 768px) {
+    .app-container {
+        position: relative;
+    }
+    
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        width: 80%;
+        max-width: 300px;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.active {
+        left: 0;
+    }
+    
+    .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+/* Improve touch targets for mobile */
+@media (max-width: 768px) {
+    .view-toggle-btn,
+    .filter-select,
+    .card-actions button,
+    .assignment-actions button {
+        padding: var(--spacing-md);
+    }
+    
+    .meta-item {
+        padding: var(--spacing-xs) 0;
     }
 }

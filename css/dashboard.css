@@ -858,3 +858,176 @@
         grid-template-columns: 1fr;
     }
 }
+/* Mobile Responsive Fixes */
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+    
+    .dashboard-summary {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+    
+    .summary-card {
+        padding: var(--spacing-md);
+    }
+    
+    .summary-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+    
+    .summary-info p {
+        font-size: var(--font-size-lg);
+    }
+    
+    .card-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    .card-body {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    .quick-action-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 576px) {
+    .dashboard-summary {
+        grid-template-columns: 1fr;
+    }
+    
+    .summary-card {
+        flex-direction: row;
+        align-items: center;
+    }
+    
+    .greeting-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+    }
+    
+    .timezone-badge {
+        margin-top: 5px;
+    }
+    
+    .task-item, .event-item, .material-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .task-meta, .event-meta, .material-meta {
+        margin-top: var(--spacing-xs);
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+    }
+    
+    .event-time {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs);
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .material-download {
+        margin-top: var(--spacing-xs);
+    }
+    
+    .quick-action-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .quick-action {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: var(--spacing-md);
+        text-align: left;
+    }
+    
+    .quick-action i {
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-greeting h2 {
+        font-size: var(--font-size-lg);
+    }
+    
+    .summary-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+    
+    .card-header h3 {
+        font-size: var(--font-size-base);
+    }
+    
+    .task-details h4, .event-details h4, .material-details h4 {
+        font-size: var(--font-size-sm);
+    }
+    
+    .task-priority, .event-type {
+        min-width: auto;
+        padding: 2px 6px;
+    }
+    
+    .material-icon, .event-icon {
+        width: 30px;
+        height: 30px;
+        font-size: 14px;
+    }
+}
+
+/* Fix overflow issues */
+.task-item, .event-item, .material-item {
+    word-break: break-word;
+}
+
+/* Ensure the main content doesn't overflow */
+.main-content {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Ensure charts are responsive */
+canvas {
+    max-width: 100%;
+    height: auto !important;
+}
+
+/* Fix for mobile sidebar */
+@media (max-width: 768px) {
+    .app-container {
+        position: relative;
+    }
+    
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        width: 80%;
+        max-width: 300px;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.active {
+        left: 0;
+    }
+    
+    .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+}
