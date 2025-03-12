@@ -1105,9 +1105,6 @@ async function downloadMaterial(materialId, filePath) {
     const token = localStorage.getItem('accessToken');
     
     try {
-        // Create a download link
-        const downloadUrl = `https://study-o5hp.onrender.com/materials/download/${materialId}?token=${token}`;
-        
         // Add download notification
         const notification = document.createElement('div');
         notification.className = 'download-notification';
@@ -1137,20 +1134,18 @@ async function downloadMaterial(materialId, filePath) {
         setTimeout(() => {
             notification.classList.add('active');
         }, 10);
+
+        // Create download URL
+        const downloadUrl = `https://study-o5hp.onrender.com/materials/download/${materialId}?token=${token}`;
         
-        // Open download in a new tab or use an iframe to handle the download
-        // Option 1: Use an iframe (works better for same-origin downloads)
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = downloadUrl;
-        document.body.appendChild(iframe);
-        
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 2000);
-        
-        // Option 2: Window open (may be blocked by popup blockers)
-        // window.open(downloadUrl, '_blank');
+        // Create a temporary anchor element to trigger the download
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.target = '_blank'; // Open in new tab to handle potential auth issues
+        a.download = material ? material.name : 'download';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         
         // Hide notification after a few seconds
         setTimeout(() => {
