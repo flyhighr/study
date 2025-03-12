@@ -316,12 +316,35 @@ async def check_upcoming_due_dates():
         # Run every hour
         await asyncio.sleep(60 * 60)
 
-# Start ping task and notification check in background
+from json import JSONEncoder
+from bson import ObjectId
+
+# Add a custom JSON encoder class for ObjectId
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        return super().default(obj)
+
+# Add a custom encoder function for FastAPI's jsonable_encoder
+def custom_jsonable_encoder(obj, **kwargs):
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    
+    if isinstance(obj, list):
+        return [custom_jsonable_encoder(item, **kwargs) for item in obj]
+    
+    if isinstance(obj, dict):
+        return {key: custom_jsonable_encoder(value, **kwargs) for key, value in obj.items()}
+    
+    return obj
+
+# And update your FastAPI cache initialization in the startup event
 @app.on_event("startup")
 async def startup_event():
     await create_indexes()
-    # Initialize in-memory cache
-    FastAPICache.init(InMemoryBackend())
+    # Initialize in-memory cache with custom JSON encoder
+    FastAPICache.init(InMemoryBackend(), json_encoder=CustomJSONEncoder)
     # Start background tasks
     asyncio.create_task(start_ping_task())
     asyncio.create_task(check_upcoming_due_dates())
