@@ -16,4 +16,4 @@ pytz==2023.3
 secure-smtplib==0.1.1
 fastapi-cache2==0.2.1
 uvloop==0.17.0
-orjson==3.8.10
+orjson
