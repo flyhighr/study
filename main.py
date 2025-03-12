@@ -178,7 +178,7 @@ VALID_TIMEZONES = pytz.all_timezones
 
 # Self-ping mechanism to prevent Render from shutting down
 async def ping_server():
-    app_url = os.getenv("APP_URL", "https://your-app-url.onrender.com")
+    app_url = os.getenv("APP_URL", "https://study-o5hp.onrender.com")
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(f"{app_url}/health", timeout=5) as response:
