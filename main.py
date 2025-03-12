@@ -315,16 +315,18 @@ async def check_upcoming_due_dates():
         
         # Run every hour
         await asyncio.sleep(60 * 60)
-
+from json import JSONEncoder
+from bson import ObjectId
 from fastapi_cache.coder import JsonCoder
 
-# Create a custom JSON encoder class for ObjectId
+# Updated custom JSON encoder class
 class CustomJsonEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, ObjectId):
             return str(obj)
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
         return super().default(obj)
-
 # Create a custom coder class
 class CustomJsonCoder(JsonCoder):
     @classmethod
